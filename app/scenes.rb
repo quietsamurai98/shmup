@@ -1,16 +1,7 @@
-class AbstractScene
-  def initialize
+class GenericScene
+  # This class contains the basic logic needed for most "spawn a wave of enemies" type scenes.
+  # Specific scenes should use this as a superclass, and override logic as needed.
 
-  end
-
-  def do_tick(cm, player) end
-
-  def renderables
-
-  end
-end
-
-class LemniPeek < AbstractScene
   # @return [Integer]
   attr_accessor :scene_tick, :area_width
   # @return [Hash<Array<Class,Array>>]
@@ -25,24 +16,31 @@ class LemniPeek < AbstractScene
   def initialize(cm, player)
     @scene_tick = -1 # Negative one, since we want the first tick to be tick zero.
     @spawn_table = build_spawn_table #spawn_tick => [[enemy1_class, [enemy1_initialization_args]],[enemy2_class, [enemy2_initialization_args]], ...]
-    @area_width = 540
-    @cm = cm
-    @player = player
+    @area_width = 540 # 3:4 aspect ratio, like old-school vertical shooters.
+    @cm = cm # The collision manager
+    @player = player # The player
+    @first_spawn_tick = @spawn_table.keys.min
+  end
+
+  # @return [Boolean] True if the game can move on to the next scene.
+  def completed?
+    @cm.get_group(:enemies).length == 0 && @first_spawn_tick < @scene_tick
   end
 
   # @return [Hash]
   def build_spawn_table
     table = {}
-    speed_div = 198
-    spawn_rate = 36
-    # Good values for speed_div and spawn_rate satisfy the following equation: (2*speed_div/spawn_rate) % 2 == 1
-    count = 2 * speed_div / spawn_rate
-    i = 1
-    while i <= count
-      table[spawn_rate * i] = [[EnemyLemni, [Math::PI / speed_div, 300, 200, 100]]]
-      i += 1
-    end
-    table
+    # Here is where you'd build your spawn table.
+    # A spawn table uses scene ticks for keys, and arrays of spawn data for the values
+    # Spawn data is an array with the enemy class to spawn as the first element,
+    # and an array of the args taken by the class's constructor as the second element.
+
+    # Example:
+    table[0] = [AbstractEnemy, [640, 720-100]]
+
+    # This would spawn an AbstractEnemy on tick zero, creating the enemy by calling AbstractEnemy.new(640, 720-100)
+
+    return table
   end
 
   def do_tick(args)
@@ -68,8 +66,9 @@ class LemniPeek < AbstractScene
     i = 0
     il = arr.length
     while i < il
-      arr[i].move
-      if arr[i].y > 730
+      ai = arr[i]
+      ai.move
+      if ai.y < -10 || ai.y > 730 || ai.x < 630 - @area_width/2 || ai.x > 650 + @area_width/2
         @cm.del_from_group(:player_bullets, arr[i])
         i -= 1
         il -= 1
@@ -84,9 +83,10 @@ class LemniPeek < AbstractScene
     i = 0
     il = arr.length
     while i < il
-      arr[i].move
-      if arr[i].y < -10
-        @cm.del_from_group(:enemy_bullets, arr[i])
+      ai = arr[i]
+      ai.move
+      if ai.y < -10 || ai.y > 730 || ai.x < 630 - @area_width/2 || ai.x > 650 + @area_width/2
+        @cm.del_from_group(:enemy_bullets, ai)
         i -= 1
         il -= 1
       end
@@ -109,7 +109,7 @@ class LemniPeek < AbstractScene
       end
     end
     if cm.any_collision_between?(:players, :enemy_bullets)
-      $gtk.reset
+      $state.populated = false
     end
   end
 
@@ -126,14 +126,14 @@ class LemniPeek < AbstractScene
   end
 
   def renderables
-    # render order for this scene, back to front
+    # Render order for this scene, back to front
     # Player
     # Enemies
     # Player bullets
     # Enemy bullets
     # Side panels
     [
-        @player.renderable,
+        @player.renderables,
         @cm.get_group(:enemies).map(&:renderables),
         @cm.get_group(:player_bullets),
         @cm.get_group(:enemy_bullets),
@@ -148,5 +148,23 @@ class LemniPeek < AbstractScene
     @spawn_table[@scene_tick].each do |st_row|
       @cm.add_to_group(:enemies, st_row[0].new(*st_row[1]))
     end
+  end
+end
+
+class LemniWave < GenericScene
+
+  # @return [Hash]
+  def build_spawn_table
+    table = {}
+    speed_div = 198
+    spawn_rate = 36
+    # Good values for speed_div and spawn_rate satisfy the following equation: (2*speed_div/spawn_rate) % 2 == 1
+    count = 2 * speed_div / spawn_rate
+    i = 1
+    while i <= count
+      table[spawn_rate * i] = [[EnemyLemni, [Math::PI / speed_div, 300, 200, 100, 60*5.2, spawn_rate * (count-i+1)]]]
+      i += 1
+    end
+    table
   end
 end

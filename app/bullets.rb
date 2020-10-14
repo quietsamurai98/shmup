@@ -1,3 +1,6 @@
+# A bullet MUST be a duck-typed renderable.
+# SimpleCircleBullet is an example of a sprite bullet, while
+# SimpleBoxBullet is an example of a solid bullet.
 class AbstractBullet
   attr_accessor :damage
 end
@@ -15,13 +18,14 @@ class SimpleCircleBullet < AbstractBullet
   # @param [Integral] r
   # @param [Integral] g
   # @param [Integral] b
-  def initialize(x, y, rad, vx, vy, r, g, b)
+  # @param [Integral] damage
+  def initialize(x, y, rad, vx, vy, r, g, b, damage=1)
     @x = x
     @y = y
     @rad = rad
     @w = 2 * rad
     @h = 2 * rad
-    @path = 'sprite/circle.png'
+    @path = "sprites/rad_#{rad.to_i}_bullet.png"
     @vx = vx
     @vy = vy
     @r = r
@@ -29,6 +33,7 @@ class SimpleCircleBullet < AbstractBullet
     @b = b
     @a = 255
     @collider = GeoGeo::Circle.new(x + rad, y + rad, rad)
+    @damage = damage
   end
 
   # @return [nil]
@@ -75,10 +80,5 @@ class SimpleBoxBullet
   # @return [nil]
   def primitive_marker
     :solid
-  end
-
-  # @return [nil]
-  def delete
-
   end
 end

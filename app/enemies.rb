@@ -4,9 +4,7 @@ class AbstractEnemy
 
   # @return [nil]
   # @param [Array<Object>] arguments
-  def initialize(*arguments)
-
-  end
+  def initialize(*arguments) end
 
   # @return [nil]
   def update_pos
@@ -16,9 +14,7 @@ class AbstractEnemy
   # @return [nil]
   # @param [ShmupLib::CollisionManager] cm
   # @param [Player] player
-  def do_tick(cm, player)
-
-  end
+  def do_tick(cm, player) end
 
   # @return [Array]
   def renderables
@@ -27,22 +23,24 @@ class AbstractEnemy
 end
 
 class EnemyLemni < AbstractEnemy
-  def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height)
+  def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height, fire_rate, fire_delay)
     @health = 3
     @t = 0
     @speed = speed
-    @age = 0
+    @age = -1
     @collider = GeoGeo::Circle.new(-100, -100, 16)
     @turret_sprite_angle = -90
     @initial_orbit_width = initial_orbit_width
     @final_orbit_width = final_orbit_width
     @orbit_height = orbit_height
+    @fire_rate = fire_rate
+    @fire_delay = fire_delay
     update_pos
   end
 
   def update_pos
     x_factor = @final_orbit_width
-    x_factor += (@initial_orbit_width - @final_orbit_width) * (1-@t) if @t < 1
+    x_factor += (@initial_orbit_width - @final_orbit_width) * (1 - @t) if @t < 1
     dx, dy = @x || 0, @y || 0
     @x = Math.cos(@t) * x_factor + 640
     @y = Math.sin(2 * @t) * 100 + 500
@@ -74,8 +72,8 @@ class EnemyLemni < AbstractEnemy
     @turret_sprite_angle = angle_to_player.to_degrees
     cm.add_to_group(
         :enemy_bullets,
-        SimpleBoxBullet.new(@x, @y, 2, 2, 0, -3),
-        ) if @age % 30 == 0 && false
+        SimpleCircleBullet.new(@x+15*Math.cos(angle_to_player), @y+15*Math.sin(angle_to_player), 3, 2*Math.cos(angle_to_player), 2*Math.sin(angle_to_player), 0, 255, 0),
+    ) if (@age-@fire_delay) % @fire_rate == 0 && (@age-@fire_delay) >= 0
   end
 
   def renderables
@@ -165,7 +163,7 @@ class BossFigure8Enemy
     cm.add_to_group(
         :enemy_bullets,
         SimpleBoxBullet.new(@x, @y, 2, 2, 0, -3),
-        ) if @age % 30 == 0 && false
+    ) if @age % 30 == 0 && false
   end
 
   def renderable
@@ -218,7 +216,7 @@ class SimpleWideEnemy
           SimpleBoxBullet.new(@x - 01, @y - 7 - 5, 2, 5, 0, -4),
           SimpleBoxBullet.new(@x + 10, @y - 7 - 5, 2, 5, 0, -4),
           SimpleBoxBullet.new(@x + 20, @y - 7 - 5, 2, 5, 0, -4),
-          )
+      )
       @cur_cooldown = @max_cooldown + 1
     end
     @collider = GeoGeo::Box.new(@x - 24, @x + 24, @y - 4, @y + 8)

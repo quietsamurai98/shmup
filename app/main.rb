@@ -12,12 +12,21 @@ require 'app/scenes.rb'
 # @param [GTK::Args] args
 # @return [nil]
 def tick(args)
-  args.outputs.background_color = [0, 0, 0]
+  # Reset/initialization logic
   args.state.clear! if args.inputs.keyboard.key_down.r
   init(args) unless args.state.populated
+
+  # Background rendering
+  args.outputs.background_color = [0, 0, 0]
   args.state.stars.do_tick
+  args.outputs.primitives << args.state.stars.renderables
+
+  # Scene logic
+  args.state.scene = LemniWave.new(args.state.cm, args.state.player) if args.state.scene.completed?
   args.state.scene.do_tick(args)
-  args.outputs.primitives << args.state.stars.renderables.concat(args.state.scene.renderables)
+  args.outputs.primitives << args.state.scene.renderables
+
+  # Debug labels
   args.outputs.labels << {x: 10, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0}
 end
 
@@ -25,7 +34,7 @@ def init(args)
   args.state.stars = StarField.new
   args.state.player = Player.new
   args.state.cm = ShmupLib::CollisionManager.new
-  args.state.scene = LemniPeek.new(args.state.cm, args.state.player)
+  args.state.scene = LemniWave.new(args.state.cm, args.state.player)
   args.state.cm.add_group(:players)
   args.state.cm.add_group(:enemies)
   args.state.cm.add_group(:player_bullets)
@@ -60,144 +69,6 @@ class StarField
     ]
   end
 end
-
-def old_tick(args)
-  args.gtk.hide_cursor
-  if args.inputs.keyboard.key_down.r || Kernel.tick_count == 0
-    $boss_y = 722
-    $boss_spawn = 0
-    args.state.area_width = 540
-    args.state.game_tick = -1
-    init(args)
-  end
-  args.state.game_tick += 1
-  # @type [ShmupLib::CollisionManager] cm
-  cm = args.state.cm
-  # @type [Player] player
-  player = args.state.player
-
-  if args.state.area_width < 1280 && (args.inputs.keyboard.key_held.z || args.state.area_width != 540)
-    if args.state.area_width == 540
-      # args.outputs.sounds << 'sounds/boss_alarm.wav'
-    end
-    args.state.area_width = args.state.area_width + 2.5
-  end
-  area_width = args.state.area_width
-  if area_width == 1280
-    if $boss_y > 720 - 128
-      $boss_y -= 1
-    end
-    if $boss_spawn < 25 && args.state.game_tick % 32 == 0 && $boss_y < 670
-      spawn_enemy(cm, :boss)
-      $boss_spawn += 1
-    end
-    args.outputs.primitives << {
-        x: 40,
-        y: $boss_y,
-        w: 1200,
-        h: 128,
-        path: 'sprites/boss.png'
-    }
-  end
-
-  # spawn_enemy(cm, :fig8) if args.state.game_tick % 37 == 0 && args.state.game_tick.between?(120, 120 + 37 * 17)
-
-  args.outputs.background_color = [0, 0, 0]
-
-  tick_player_bullets(cm)
-  tick_enemy_bullets(cm)
-
-  cm_tick(cm)
-
-  player.do_tick(args, cm)
-  tick_enemies(cm, player)
-
-  args.outputs.primitives << player.renderable
-  args.outputs.primitives << cm.get_group(:enemies).map(&:renderable)
-  args.outputs.primitives << cm.get_group(:enemy_bullets)
-  args.outputs.primitives << cm.get_group(:player_bullets)
-  args.outputs.primitives << {x: 0, y: 0, w: 640 - area_width / 2, h: 720, r: 25}.solid
-  args.outputs.primitives << {x: 640 + area_width / 2, y: 0, w: 640 - area_width / 2, h: 720, r: 25}.solid
-
-  args.outputs.static_solids.each do |s|
-    s.y = (s.y + 10 - s[:v]) % 740 - 10
-  end
-  args.outputs.labels << [
-      {x: 275 - area_width / 2, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0},
-      {x: 275 - area_width / 2, y: 60, text: "Possible Collision Pairs : #{cm.get_group(:enemies).length * cm.get_group(:player_bullets).length + cm.get_group(:enemy_bullets).length}", r: 255, g: 0, b: 0},
-      {x: 275 - area_width / 2, y: 90, text: "Player Bullet Count : #{cm.get_group(:player_bullets).length}", r: 255, g: 0, b: 0},
-      {x: 275 - area_width / 2, y: 120, text: "Enemy Bullet Count : #{cm.get_group(:enemy_bullets).length}", r: 255, g: 0, b: 0},
-      {x: 275 - area_width / 2, y: 150, text: "Enemy Count : #{cm.get_group(:enemies).length}", r: 255, g: 0, b: 0},
-  ]
-end
-
-# @param [ShmupLib::CollisionManager] cm
-def spawn_enemy(cm, sym)
-  if sym == :fig8
-    cm.add_to_group(:enemies, Figure8Enemy.new(0.01))
-  end
-  if sym == :boss
-    cm.add_to_group(:enemies, BossFigure8Enemy.new(Math::PI / 400))
-  end
-end
-
-# @param [ShmupLib::CollisionManager] cm
-def tick_enemies(cm, player)
-  arr = cm.get_group(:enemies)
-  i = 0
-  il = arr.length
-  while i < il
-    arr[i].do_tick(cm, player)
-    if false # TODO
-      cm.del_from_group(:enemies, arr[i])
-      i -= 1
-      il -= 1
-    end
-    i += 1
-  end
-end
-
-# @param [GTK::Args] args
-# @return [nil]
-def old_init(args)
-  player = Player.new
-  dx = 60
-  enemies = [
-      SimpleWideEnemy.new(640 - 3 * dx, 600, 0.5),
-      SimpleWideEnemy.new(640 - dx, 600, 1),
-      SimpleWideEnemy.new(640 + dx, 600, 0.5),
-      SimpleWideEnemy.new(640 + 3 * dx, 600, 1),
-      SimpleWideEnemy.new(640 - 3 * dx, 550, 1.5),
-      SimpleWideEnemy.new(640 - dx, 550, 2),
-      SimpleWideEnemy.new(640 + dx, 550, 1.5),
-      SimpleWideEnemy.new(640 + 3 * dx, 550, 2),
-      SimpleWideEnemy.new(640 - 3 * dx, 500, 2.5),
-      SimpleWideEnemy.new(640 - dx, 500, 3),
-      SimpleWideEnemy.new(640 + dx, 500, 2.5),
-      SimpleWideEnemy.new(640 + 3 * dx, 500, 3),
-      SimpleWideEnemy.new(640 - 3 * dx, 450, 3.5),
-      SimpleWideEnemy.new(640 - dx, 450, 4),
-      SimpleWideEnemy.new(640 + dx, 450, 3.5),
-      SimpleWideEnemy.new(640 + 3 * dx, 450, 4),
-      SimpleWideEnemy.new(640 - 3 * dx, 400, 4.5),
-      SimpleWideEnemy.new(640 - dx, 400, 5),
-      SimpleWideEnemy.new(640 + dx, 400, 4.5),
-      SimpleWideEnemy.new(640 + 3 * dx, 400, 5),
-  ]
-  cm = ShmupLib::CollisionManager.new
-  cm.add_group(:players)
-  cm.add_group(:enemies)
-  cm.add_group(:player_bullets)
-  cm.add_group(:enemy_bullets)
-  cm.add_to_group(:players, player)
-  args.state.cm = cm
-  args.state.player = player
-  args.outputs.static_solids.clear
-  200.times {
-    args.outputs.static_solids << {x: rand * 1278, y: rand * 730, w: 2, h: 2, r: 255, g: 255, b: 255, v: rand * 0.25 + 1}
-  }
-end
-
 class Player
   attr_accessor :collider, :x, :y
 
@@ -219,14 +90,14 @@ class Player
     # @type [Array] keys_dh
     keys_dh = args.inputs.keyboard.key[:down_or_held]
     dx, dy = 0, 0
-    dx += 2 if keys_dh.include?(:d)
-    dx -= 2 if keys_dh.include?(:a)
-    dy += 1 if keys_dh.include?(:w)
-    dy -= 1 if keys_dh.include?(:s)
+    dx += 3 if keys_dh.include?(:d)
+    dx -= 3 if keys_dh.include?(:a)
+    dy += 3 if keys_dh.include?(:w)
+    dy -= 3 if keys_dh.include?(:s)
     shift(dx, dy) if dx != 0 || dy != 0
-    fire(cm, :ripple, dx * 0.1, dy) if args.inputs.mouse.button_left || keys_dh.include?(:q) && !keys_dh.include?(:e)
-    fire(cm, :salvo, dx * 0.1, dy) if keys_dh.include?(:e) && !keys_dh.include?(:q) && !args.inputs.mouse.button_left
-    fire(cm, :volley, dx * 0.1, dy) if keys_dh.include?(:q) && keys_dh.include?(:e) && !args.inputs.mouse.button_left
+    fire(cm, :ripple, dx * 0.1, dy.abs) if args.inputs.mouse.button_left || keys_dh.include?(:q) && !keys_dh.include?(:e)
+    fire(cm, :salvo, dx * 0.1, dy.abs) if keys_dh.include?(:e) && !keys_dh.include?(:q) && !args.inputs.mouse.button_left
+    fire(cm, :volley, dx * 0.1, dy.abs) if keys_dh.include?(:q) && keys_dh.include?(:e) && !args.inputs.mouse.button_left
     @cur_fire_cooldown -= 1 if @cur_fire_cooldown > 0
   end
 
@@ -259,7 +130,7 @@ class Player
         [2, -2],
         [8, -2],
     ][@cur_barrel]
-    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + bx, @y + by, 2, 3, 0 + dx, 3))
+    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + bx, @y + by, 2, 3, 0 + dx, 3 + dy))
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
   end
 
@@ -268,10 +139,10 @@ class Player
     if @cur_barrel == 0
       cm.add_to_group(
           :player_bullets,
-          SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3),
-          SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3),
-          SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3),
-          SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3)
+          SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3+dy),
+          SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3+dy),
+          SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3+dy),
+          SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3+dy)
       )
     end
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
@@ -280,18 +151,18 @@ class Player
   # @param [ShmupLib::CollisionManager] cm
   def volley_fire(cm, dx, dy)
     if @cur_barrel == 0
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3))
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3))
+      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3 + dy))
+      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3 + dy))
     end
     if @cur_barrel == 2
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3))
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3))
+      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3 + dy))
+      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3 + dy))
     end
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
   end
 
   # @return [Array]
-  def renderable
+  def renderables
     out = [
         {
             x: @x - 16,
@@ -319,3 +190,102 @@ class Player
     out
   end
 end
+
+# Here lies old, dead code.
+# I'll rip a boss fight out of here soon.
+#
+# def old_tick(args)
+#   args.gtk.hide_cursor
+#   if args.inputs.keyboard.key_down.r || Kernel.tick_count == 0
+#     $boss_y = 722
+#     $boss_spawn = 0
+#     args.state.area_width = 540
+#     args.state.game_tick = -1
+#     init(args)
+#   end
+#   args.state.game_tick += 1
+#   # @type [ShmupLib::CollisionManager] cm
+#   cm = args.state.cm
+#   # @type [Player] player
+#   player = args.state.player
+#
+#   if args.state.area_width < 1280 && (args.inputs.keyboard.key_held.z || args.state.area_width != 540)
+#     if args.state.area_width == 540
+#       # args.outputs.sounds << 'sounds/boss_alarm.wav'
+#     end
+#     args.state.area_width = args.state.area_width + 2.5
+#   end
+#   area_width = args.state.area_width
+#   if area_width == 1280
+#     if $boss_y > 720 - 128
+#       $boss_y -= 1
+#     end
+#     if $boss_spawn < 25 && args.state.game_tick % 32 == 0 && $boss_y < 670
+#       spawn_enemy(cm, :boss)
+#       $boss_spawn += 1
+#     end
+#     args.outputs.primitives << {
+#         x: 40,
+#         y: $boss_y,
+#         w: 1200,
+#         h: 128,
+#         path: 'sprites/boss.png'
+#     }
+#   end
+#
+#   # spawn_enemy(cm, :fig8) if args.state.game_tick % 37 == 0 && args.state.game_tick.between?(120, 120 + 37 * 17)
+#
+#   args.outputs.background_color = [0, 0, 0]
+#
+#   tick_player_bullets(cm)
+#   tick_enemy_bullets(cm)
+#
+#   cm_tick(cm)
+#
+#   player.do_tick(args, cm)
+#   tick_enemies(cm, player)
+#
+#   args.outputs.primitives << player.renderable
+#   args.outputs.primitives << cm.get_group(:enemies).map(&:renderable)
+#   args.outputs.primitives << cm.get_group(:enemy_bullets)
+#   args.outputs.primitives << cm.get_group(:player_bullets)
+#   args.outputs.primitives << {x: 0, y: 0, w: 640 - area_width / 2, h: 720, r: 25}.solid
+#   args.outputs.primitives << {x: 640 + area_width / 2, y: 0, w: 640 - area_width / 2, h: 720, r: 25}.solid
+#
+#   args.outputs.static_solids.each do |s|
+#     s.y = (s.y + 10 - s[:v]) % 740 - 10
+#   end
+#   args.outputs.labels << [
+#       {x: 275 - area_width / 2, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0},
+#       {x: 275 - area_width / 2, y: 60, text: "Possible Collision Pairs : #{cm.get_group(:enemies).length * cm.get_group(:player_bullets).length + cm.get_group(:enemy_bullets).length}", r: 255, g: 0, b: 0},
+#       {x: 275 - area_width / 2, y: 90, text: "Player Bullet Count : #{cm.get_group(:player_bullets).length}", r: 255, g: 0, b: 0},
+#       {x: 275 - area_width / 2, y: 120, text: "Enemy Bullet Count : #{cm.get_group(:enemy_bullets).length}", r: 255, g: 0, b: 0},
+#       {x: 275 - area_width / 2, y: 150, text: "Enemy Count : #{cm.get_group(:enemies).length}", r: 255, g: 0, b: 0},
+#   ]
+# end
+#
+# # @param [ShmupLib::CollisionManager] cm
+# def spawn_enemy(cm, sym)
+#   if sym == :fig8
+#     cm.add_to_group(:enemies, Figure8Enemy.new(0.01))
+#   end
+#   if sym == :boss
+#     cm.add_to_group(:enemies, BossFigure8Enemy.new(Math::PI / 400))
+#   end
+# end
+#
+# # @param [ShmupLib::CollisionManager] cm
+# def tick_enemies(cm, player)
+#   arr = cm.get_group(:enemies)
+#   i = 0
+#   il = arr.length
+#   while i < il
+#     arr[i].do_tick(cm, player)
+#     if false # TODO
+#       cm.del_from_group(:enemies, arr[i])
+#       i -= 1
+#       il -= 1
+#     end
+#     i += 1
+#   end
+# end
