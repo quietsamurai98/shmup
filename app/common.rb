@@ -1,4 +1,4 @@
-class Sprite
+module SpriteModule
   attr_accessor :x, :y, :w, :h, :path, :angle, :a, :r, :g, :b,
                 :source_x, :source_y, :source_w, :source_h,
                 :tile_x, :tile_y, :tile_w, :tile_h,
@@ -8,7 +8,10 @@ class Sprite
   def primitive_marker
     :sprite
   end
+end
 
+class SpriteClass
+  include SpriteModule
   def initialize(x: nil, y: nil, w: nil, h: nil, path: nil, angle: nil, a: nil, r: nil, g: nil, b: nil,
                  source_x: nil, source_y: nil, source_w: nil, source_h: nil,
                  tile_x: nil, tile_y: nil, tile_w: nil, tile_h: nil,

@@ -12,32 +12,45 @@ require 'app/scenes.rb'
 # @param [GTK::Args] args
 # @return [nil]
 def tick(args)
-  args.outputs.background_color = [0,0,0]
+  args.outputs.background_color = [0, 0, 0]
   args.state.clear! if args.inputs.keyboard.key_down.r
-  raise 'foo' if args.state.empty?
-  args.state.stars ||= StarField.new
-  args.state.player ||= Player.new
-  args.state.cm ||= ShmupLib::CollisionManager.new
-  args.state.scene ||= LemniPeek.new(args.state.cm, args.state.player)
+  init(args) unless args.state.populated
   args.state.stars.do_tick
-  args.state.scene.do_tick
+  args.state.scene.do_tick(args)
   args.outputs.primitives << args.state.stars.renderables.concat(args.state.scene.renderables)
   args.outputs.labels << {x: 10, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0}
 end
 
+def init(args)
+  args.state.stars = StarField.new
+  args.state.player = Player.new
+  args.state.cm = ShmupLib::CollisionManager.new
+  args.state.scene = LemniPeek.new(args.state.cm, args.state.player)
+  args.state.cm.add_group(:players)
+  args.state.cm.add_group(:enemies)
+  args.state.cm.add_group(:player_bullets)
+  args.state.cm.add_group(:enemy_bullets)
+  args.state.cm.add_to_group(:players, args.state.player)
+  args.state.populated = true
+end
+
 class StarField
   def initialize
-    @layer1 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_1.png', y: 0)
-    @layer2 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_2.png', y: 0)
-    @layer3 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_3.png', y: 0)
-    @layer4 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_4.png', y: 0)
+    @layer1, @layer2, @layer3, @layer4 = [
+        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_1.png', y: (rand * -720).to_i),
+        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_2.png', y: (rand * -720).to_i),
+        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_3.png', y: (rand * -720).to_i),
+        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_4.png', y: (rand * -720).to_i)
+    ].shuffle
   end
+
   def do_tick
-    @layer1.y = (@layer1.y - 1/5) % -720
-    @layer2.y = (@layer2.y - 1/4) % -720
-    @layer3.y = (@layer3.y - 1/3) % -720
-    @layer4.y = (@layer4.y - 1/2) % -720
+    @layer1.y = (@layer1.y - 1 / 5) % -720
+    @layer2.y = (@layer2.y - 1 / 4) % -720
+    @layer3.y = (@layer3.y - 1 / 3) % -720
+    @layer4.y = (@layer4.y - 1 / 2) % -720
   end
+
   def renderables
     [
         @layer1,
@@ -119,38 +132,6 @@ def old_tick(args)
 end
 
 # @param [ShmupLib::CollisionManager] cm
-def tick_player_bullets(cm)
-  arr = cm.get_group(:player_bullets)
-  i = 0
-  il = arr.length
-  while i < il
-    arr[i].move
-    if arr[i].y > 730
-      cm.del_from_group(:player_bullets, arr[i])
-      i -= 1
-      il -= 1
-    end
-    i += 1
-  end
-end
-
-# @param [ShmupLib::CollisionManager] cm
-def tick_enemy_bullets(cm)
-  arr = cm.get_group(:enemy_bullets)
-  i = 0
-  il = arr.length
-  while i < il
-    arr[i].move
-    if arr[i].y < -10
-      cm.del_from_group(:enemy_bullets, arr[i])
-      i -= 1
-      il -= 1
-    end
-    i += 1
-  end
-end
-
-# @param [ShmupLib::CollisionManager] cm
 def spawn_enemy(cm, sym)
   if sym == :fig8
     cm.add_to_group(:enemies, Figure8Enemy.new(0.01))
@@ -176,27 +157,9 @@ def tick_enemies(cm, player)
   end
 end
 
-# @param [ShmupLib::CollisionManager] cm
-# @return [nil]
-def cm_tick(cm)
-  enemy_pb_collisions = cm.first_collisions_between(:enemies, :player_bullets)
-  unless enemy_pb_collisions.empty?
-    enemy_pb_collisions.keys.each do |e|
-      cm.del_from_group(:enemies, e)
-    end
-    enemy_pb_collisions.values.flatten.each do |b|
-      cm.del_from_group(:player_bullets, b)
-      b.delete
-    end
-  end
-  if cm.any_collision_between?(:players, :enemy_bullets)
-    $gtk.reset
-  end
-end
-
 # @param [GTK::Args] args
 # @return [nil]
-def init(args)
+def old_init(args)
   player = Player.new
   dx = 60
   enemies = [
@@ -251,6 +214,7 @@ class Player
 
   # @param [GTK::Args] args
   # @param [ShmupLib::CollisionManager] cm
+  # @return [nil]
   def do_tick(args, cm)
     # @type [Array] keys_dh
     keys_dh = args.inputs.keyboard.key[:down_or_held]

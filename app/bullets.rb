@@ -1,4 +1,9 @@
-class SimpleCircleBullet < Sprite
+class AbstractBullet
+  attr_accessor :damage
+end
+
+class SimpleCircleBullet < AbstractBullet
+  include SpriteModule
   attr_accessor :collider
 
   # @return [nil]
@@ -44,7 +49,9 @@ class SimpleBoxBullet
   # @param [Integral] h
   # @param [Integral] vx
   # @param [Integral] vy
-  def initialize(x, y, w, h, vx, vy)
+  # @param [Integral] damage
+  def initialize(x, y, w, h, vx, vy, damage = 1)
+    @damage = damage
     @x = x
     @y = y
     @w = w

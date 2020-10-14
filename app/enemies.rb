@@ -1,7 +1,34 @@
-class EnemyLemni
+class AbstractEnemy
   attr_accessor :collider
+  attr_accessor :health
 
+  # @return [nil]
+  # @param [Array<Object>] arguments
+  def initialize(*arguments)
+
+  end
+
+  # @return [nil]
+  def update_pos
+
+  end
+
+  # @return [nil]
+  # @param [ShmupLib::CollisionManager] cm
+  # @param [Player] player
+  def do_tick(cm, player)
+
+  end
+
+  # @return [Array]
+  def renderables
+    []
+  end
+end
+
+class EnemyLemni < AbstractEnemy
   def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height)
+    @health = 3
     @t = 0
     @speed = speed
     @age = 0
@@ -51,7 +78,7 @@ class EnemyLemni
         ) if @age % 30 == 0 && false
   end
 
-  def renderable
+  def renderables
     [
         {
             x: @x - 20,
