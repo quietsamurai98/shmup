@@ -3,17 +3,52 @@ require 'patches/console_prompt.rb'
 require 'patches/framerate_diagnostics.rb'
 require 'lib/geo_geo.rb'
 require 'lib/shmup_lib.rb'
-
-class GameState
-  def initialize
-
-  end
-end
+require 'app/common.rb'
+require 'app/bullets.rb'
+require 'app/enemies.rb'
+require 'app/scenes.rb'
 
 
 # @param [GTK::Args] args
 # @return [nil]
 def tick(args)
+  args.outputs.background_color = [0,0,0]
+  args.state.clear! if args.inputs.keyboard.key_down.r
+  raise 'foo' if args.state.empty?
+  args.state.stars ||= StarField.new
+  args.state.player ||= Player.new
+  args.state.cm ||= ShmupLib::CollisionManager.new
+  args.state.scene ||= LemniPeek.new(args.state.cm, args.state.player)
+  args.state.stars.do_tick
+  args.state.scene.do_tick
+  args.outputs.primitives << args.state.stars.renderables.concat(args.state.scene.renderables)
+  args.outputs.labels << {x: 10, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0}
+end
+
+class StarField
+  def initialize
+    @layer1 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_1.png', y: 0)
+    @layer2 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_2.png', y: 0)
+    @layer3 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_3.png', y: 0)
+    @layer4 = Sprite.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_4.png', y: 0)
+  end
+  def do_tick
+    @layer1.y = (@layer1.y - 1/5) % -720
+    @layer2.y = (@layer2.y - 1/4) % -720
+    @layer3.y = (@layer3.y - 1/3) % -720
+    @layer4.y = (@layer4.y - 1/2) % -720
+  end
+  def renderables
+    [
+        @layer1,
+        @layer2,
+        @layer3,
+        @layer4,
+    ]
+  end
+end
+
+def old_tick(args)
   args.gtk.hide_cursor
   if args.inputs.keyboard.key_down.r || Kernel.tick_count == 0
     $boss_y = 722
@@ -200,18 +235,6 @@ def init(args)
   }
 end
 
-class Sprite
-  attr_accessor :x, :y, :w, :h, :path, :angle, :a, :r, :g, :b,
-                :source_x, :source_y, :source_w, :source_h,
-                :tile_x, :tile_y, :tile_w, :tile_h,
-                :flip_horizontally, :flip_vertically,
-                :angle_anchor_x, :angle_anchor_y
-
-  def primitive_marker
-    :sprite
-  end
-end
-
 class Player
   attr_accessor :collider, :x, :y
 
@@ -330,67 +353,5 @@ class Player
       }.line
     end) if false
     out
-  end
-end
-
-class SimpleCircleBullet < Sprite
-  attr_accessor :collider
-
-  def initialize(x, y, rad, vx, vy, r, g, b)
-    @x = x
-    @y = y
-    @rad = rad
-    @w = 2 * rad
-    @h = 2 * rad
-    @path = 'sprite/circle.png'
-    @vx = vx
-    @vy = vy
-    @r = r
-    @g = g
-    @b = b
-    @a = 255
-    @collider = GeoGeo::Circle.new(x + rad, y + rad, rad)
-  end
-
-  # @return [nil]
-  def move
-    @x += @vx
-    @y += @vy
-    @collider.shift(@vx, @vy)
-  end
-end
-
-class SimpleBoxBullet
-  attr_accessor :x, :y, :w, :h, :vx, :vy, :r, :g, :b, :a, :collider
-
-  def initialize(x, y, w, h, vx, vy)
-    @x = x
-    @y = y
-    @w = w
-    @h = h
-    @vx = vx
-    @vy = vy
-    @r = 255
-    @g = 0
-    @b = 0
-    @a = 255
-    @collider = GeoGeo::Box.new_drgtk(x, y, w, h)
-  end
-
-  # @return [nil]
-  def move
-    @x += @vx
-    @y += @vy
-    @collider.shift(@vx, @vy)
-  end
-
-  # @return [nil]
-  def primitive_marker
-    :solid
-  end
-
-  # @return [nil]
-  def delete
-
   end
 end

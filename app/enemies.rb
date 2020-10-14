@@ -1,41 +1,38 @@
-class Figure8Enemy
+class EnemyLemni
   attr_accessor :collider
 
-  def initialize(speed)
+  def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height)
     @t = 0
     @speed = speed
-    @lis_a = 1
-    @lis_b = 2
-    @lis_d = 0
     @age = 0
     @collider = GeoGeo::Circle.new(-100, -100, 16)
     @turret_sprite_angle = -90
+    @initial_orbit_width = initial_orbit_width
+    @final_orbit_width = final_orbit_width
+    @orbit_height = orbit_height
     update_pos
   end
 
   def update_pos
-    x_factor = 300 - 100 * @t.lesser(1)
+    x_factor = @final_orbit_width
+    x_factor += (@initial_orbit_width - @final_orbit_width) * (1-@t) if @t < 1
     dx, dy = @x || 0, @y || 0
     @x = Math.cos(@t) * x_factor + 640
     @y = Math.sin(2 * @t) * 100 + 500
     @collider.set_center(@x, @y)
 
+    @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
     case 4 * (@t % (Math::PI * 2)) / (Math::PI)
     when 0.0..0.5
       @ship_sprite_angle = -90
-      @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
     when 0.5..2.5
       @ship_sprite_angle = 0
-      @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
     when 2.5..4.5
       @ship_sprite_angle = 180
-      @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
     when 4.5..6.5
       @ship_sprite_angle = 90
-      @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
     when 6.5..8.0
       @ship_sprite_angle = -90
-      @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
     else
       @ship_sprite_angle = 0
       @ship_sprite_path = 'sprites/circle_enemy.png'
