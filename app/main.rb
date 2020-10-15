@@ -11,7 +11,21 @@ require 'app/scenes.rb'
 
 # @param [GTK::Args] args
 # @return [nil]
-def tick(args)
+def tock(args)
+  args.state.foo ||= BossLaserTurret.new(640 - 480, 720 - 64)
+  args.state.bar ||= BossLaserTurret.new(640 + 480, 720 - 64)
+  init(args) unless args.state.populated
+  args.state.foo.do_tick(args.state.cm, args.state.player)
+  args.state.bar.do_tick(args.state.cm, args.state.player)
+  args.state.player.do_tick(args, args.state.cm)
+  args.outputs.primitives << {x: 40, y: 720 - 128, w: 1200, h: 128, path: "sprites/boss.png"}.sprite
+  args.outputs.primitives << args.state.foo.renderables
+  args.outputs.primitives << args.state.bar.renderables
+  args.outputs.primitives << args.state.player
+  args.outputs.background_color = [0, 0, 0]
+end
+
+def tick args
   # Reset/initialization logic
   args.state.clear! if args.inputs.keyboard.key_down.r
   init(args) unless args.state.populated
@@ -19,7 +33,7 @@ def tick(args)
   # Background rendering
   args.outputs.background_color = [0, 0, 0]
   args.state.stars.do_tick
-  args.outputs.primitives << args.state.stars.renderables
+  args.outputs.primitives << args.state.stars
 
   # Scene logic
   args.state.scene = LemniWave.new(args.state.cm, args.state.player) if args.state.scene.completed?
@@ -45,30 +59,36 @@ end
 
 class StarField
   def initialize
-    @layer1, @layer2, @layer3, @layer4 = [
-        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_1.png', y: (rand * -720).to_i),
-        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_2.png', y: (rand * -720).to_i),
-        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_3.png', y: (rand * -720).to_i),
-        SpriteClass.new(x: 0, w: 1280, h: 1440, path: 'sprites/starfield_4.png', y: (rand * -720).to_i)
-    ].shuffle
+    @y1 = (rand * -720).to_i
+    @y2 = (rand * -720).to_i
+    @y3 = (rand * -720).to_i
+    @y4 = (rand * -720).to_i
   end
 
   def do_tick
-    @layer1.y = (@layer1.y - 1 / 5) % -720
-    @layer2.y = (@layer2.y - 1 / 4) % -720
-    @layer3.y = (@layer3.y - 1 / 3) % -720
-    @layer4.y = (@layer4.y - 1 / 2) % -720
+    @y1 = (@y1 - 1 / 5) % -720
+    @y2 = (@y2 - 1 / 4) % -720
+    @y3 = (@y3 - 1 / 3) % -720
+    @y4 = (@y4 - 1 / 2) % -720
   end
 
-  def renderables
-    [
-        @layer1,
-        @layer2,
-        @layer3,
-        @layer4,
-    ]
+  # Instead of mucking around with doing `array.map(&:renderables)`, just... make the object renderable.
+
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
+  end
+
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite(0, @y1, 1280, 1440, "sprites/starfield_1.png")
+    ffi_draw.draw_sprite(0, @y2, 1280, 1440, "sprites/starfield_2.png")
+    ffi_draw.draw_sprite(0, @y3, 1280, 1440, "sprites/starfield_3.png")
+    ffi_draw.draw_sprite(0, @y4, 1280, 1440, "sprites/starfield_4.png")
   end
 end
+
 class Player
   attr_accessor :collider, :x, :y
 
@@ -139,10 +159,10 @@ class Player
     if @cur_barrel == 0
       cm.add_to_group(
           :player_bullets,
-          SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3+dy),
-          SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3+dy),
-          SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3+dy),
-          SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3+dy)
+          SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3 + dy)
       )
     end
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
@@ -161,33 +181,25 @@ class Player
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
   end
 
-  # @return [Array]
-  def renderables
-    out = [
-        {
-            x: @x - 16,
-            y: @y - 16,
-            w: 32,
-            h: 32,
-            path: 'sprites/player.png'
-        }.sprite
-    ]
-    out.concat(@collider.verts.each_cons(2).map do
-      # @type [Array] a
-      # @type [Array] b
-    |a, b|
-      {
-          x: a.x,
-          y: a.y,
-          x2: b.x,
-          y2: b.y,
-          r: 0,
-          g: 255,
-          b: 0,
-          a: 128
-      }.line
-    end) if false
-    out
+  # Instead of mucking around with doing `array.map(&:renderables)`, just... make the object renderable.
+
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
+  end
+
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite_2(@x - 16, @y - 16, 32, 32, "sprites/player.png", nil, nil)
+    if true
+      @collider.verts.each_cons(2).map do
+        # @type [Array] a
+        # @type [Array] b
+      |a, b|
+        ffi_draw.draw_line(a.x, a.y, b.x, b.y, 0, 255, 0, 255)
+      end
+    end
   end
 end
 

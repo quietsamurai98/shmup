@@ -72,29 +72,52 @@ class EnemyLemni < AbstractEnemy
     @turret_sprite_angle = angle_to_player.to_degrees
     cm.add_to_group(
         :enemy_bullets,
-        SimpleCircleBullet.new(@x+15*Math.cos(angle_to_player), @y+15*Math.sin(angle_to_player), 3, 2*Math.cos(angle_to_player), 2*Math.sin(angle_to_player), 0, 255, 0),
-    ) if (@age-@fire_delay) % @fire_rate == 0 && (@age-@fire_delay) >= 0
+        SimpleCircleBullet.new(@x + 15 * Math.cos(angle_to_player), @y + 15 * Math.sin(angle_to_player), 3, 2 * Math.cos(angle_to_player), 2 * Math.sin(angle_to_player), 0, 255, 0),
+    ) if (@age - @fire_delay) % @fire_rate == 0 && (@age - @fire_delay) >= 0
   end
 
-  def renderables
-    [
-        {
-            x: @x - 20,
-            y: @y - 20,
-            w: 40,
-            h: 40,
-            path: @ship_sprite_path || 'sprites/circle_enemy.png',
-            angle: @ship_sprite_angle || 0
-        }.sprite,
-        {
-            x: @x - 20,
-            y: @y - 20,
-            w: 40,
-            h: 40,
-            path: 'sprites/circle_enemy_turret.png',
-            angle: @turret_sprite_angle || 0
-        }.sprite
-    ]
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, @ship_sprite_path, @ship_sprite_angle, nil)
+    ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_turret.png', @turret_sprite_angle, nil)
+  end
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
+  end
+end
+
+class BossLaserTurret < AbstractEnemy
+  def initialize(x, y)
+    @collider = GeoGeo::Box.new(-1, 0, -1, 0)
+    @x = x
+    @y = y
+    @age = -1
+    @turret_sprite_angle = -90
+    @phase = 0
+  end
+
+  def update_pos
+
+  end
+
+  def do_tick(cm, player)
+    @age += 1
+    @phase = 5#(@age / 60).floor % 6
+    angle_to_player = Math.atan2(player.y - @y, player.x - @x)
+    @turret_sprite_angle += (angle_to_player.to_degrees - @turret_sprite_angle).clamp(-2, 2) if @phase < 4 ||true
+  end
+
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite_2(@x - 1500, @y - 16, 3000, 32, 'sprites/tmp_beam.png', @turret_sprite_angle, nil) if @phase == 5
+    ffi_draw.draw_sprite_2(@x - 64, @y - 64, 128, 128, "sprites/boss_beam_turret_#{(@phase).floor}.png", @turret_sprite_angle, nil)
+  end
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
   end
 end
 
@@ -166,7 +189,7 @@ class BossFigure8Enemy
     ) if @age % 30 == 0 && false
   end
 
-  def renderable
+  def renderables
     [
         {
             x: @x - 20,
@@ -224,7 +247,7 @@ class SimpleWideEnemy
 
   end
 
-  def renderable
+  def renderables
     out = [
         {
             x: @x - 24,

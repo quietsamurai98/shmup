@@ -6,8 +6,7 @@ class AbstractBullet
 end
 
 class SimpleCircleBullet < AbstractBullet
-  include SpriteModule
-  attr_accessor :collider
+  attr_accessor :collider, :x, :y
 
   # @return [nil]
   # @param [Integral] x
@@ -19,19 +18,15 @@ class SimpleCircleBullet < AbstractBullet
   # @param [Integral] g
   # @param [Integral] b
   # @param [Integral] damage
-  def initialize(x, y, rad, vx, vy, r, g, b, damage=1)
+  def initialize(x, y, rad, vx, vy, r, g, b, damage = 1)
     @x = x
     @y = y
     @rad = rad
-    @w = 2 * rad
-    @h = 2 * rad
-    @path = "sprites/rad_#{rad.to_i}_bullet.png"
     @vx = vx
     @vy = vy
     @r = r
     @g = g
     @b = b
-    @a = 255
     @collider = GeoGeo::Circle.new(x + rad, y + rad, rad)
     @damage = damage
   end
@@ -41,6 +36,19 @@ class SimpleCircleBullet < AbstractBullet
     @x += @vx
     @y += @vy
     @collider.shift(@vx, @vy)
+  end
+
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite_3(@x - @rad, @y - @rad, 2 * @rad, 2 * @rad, "sprites/rad_3_bullet.png", nil, nil, @r, @g, @b,
+                           nil, nil, nil, nil, nil, nil,
+                           nil, nil, nil, nil, nil, nil)
+  end
+
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
   end
 end
 
@@ -63,10 +71,6 @@ class SimpleBoxBullet
     @h = h
     @vx = vx
     @vy = vy
-    @r = 255
-    @g = 0
-    @b = 0
-    @a = 255
     @collider = GeoGeo::Box.new_drgtk(x, y, w, h)
   end
 
@@ -78,7 +82,13 @@ class SimpleBoxBullet
   end
 
   # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_solid(@x, @y, @w, @h, 255, 0, 0, 255)
+  end
+
+  # @return [Symbol]
   def primitive_marker
-    :solid
+    :sprite
   end
 end

@@ -133,8 +133,8 @@ class GenericScene
     # Enemy bullets
     # Side panels
     [
-        @player.renderables,
-        @cm.get_group(:enemies).map(&:renderables),
+        @player,
+        @cm.get_group(:enemies),
         @cm.get_group(:player_bullets),
         @cm.get_group(:enemy_bullets),
         [
@@ -158,6 +158,7 @@ class LemniWave < GenericScene
     table = {}
     speed_div = 198
     spawn_rate = 36
+    spawn_rate = 3
     # Good values for speed_div and spawn_rate satisfy the following equation: (2*speed_div/spawn_rate) % 2 == 1
     count = 2 * speed_div / spawn_rate
     i = 1
