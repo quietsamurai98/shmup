@@ -18,7 +18,8 @@ class SimpleCircleBullet < AbstractBullet
   # @param [Integral] g
   # @param [Integral] b
   # @param [Integral] damage
-  def initialize(x, y, rad, vx, vy, r, g, b, damage = 1)
+  # @param [Boolean] show_trajectory
+  def initialize(x, y, rad, vx, vy, r, g, b, damage = 1, show_trajectory=true)
     @x = x
     @y = y
     @rad = rad
@@ -52,7 +53,7 @@ class SimpleCircleBullet < AbstractBullet
   end
 end
 
-class SimpleBoxBullet
+class SimpleBoxBullet < AbstractBullet
   attr_accessor :x, :y, :w, :h, :vx, :vy, :r, :g, :b, :a, :collider
 
   # @return [nil]

@@ -23,8 +23,8 @@ class AbstractEnemy
 end
 
 class EnemyLemni < AbstractEnemy
-  def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height, fire_rate, fire_delay)
-    @health = 3
+  def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height, orbit_center_x, orbit_center_y, orbit_y_delta, fire_rate, fire_delay)
+    @health = 1
     @t = 0
     @speed = speed
     @age = -1
@@ -33,6 +33,9 @@ class EnemyLemni < AbstractEnemy
     @initial_orbit_width = initial_orbit_width
     @final_orbit_width = final_orbit_width
     @orbit_height = orbit_height
+    @orbit_center_x = orbit_center_x
+    @orbit_center_y = orbit_center_y
+    @orbit_y_delta = orbit_y_delta
     @fire_rate = fire_rate
     @fire_delay = fire_delay
     update_pos
@@ -41,27 +44,13 @@ class EnemyLemni < AbstractEnemy
   def update_pos
     x_factor = @final_orbit_width
     x_factor += (@initial_orbit_width - @final_orbit_width) * (1 - @t) if @t < 1
-    dx, dy = @x || 0, @y || 0
-    @x = Math.cos(@t) * x_factor + 640
-    @y = Math.sin(2 * @t) * 100 + 500
+    tmp_x = Math.cos(@t)
+    @x = tmp_x * x_factor + @orbit_center_x
+    tmp_y = Math.sin(2 * (@t+@orbit_y_delta))
+    @y = tmp_y * @orbit_height + @orbit_center_y
     @collider.set_center(@x, @y)
-
-    @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
-    case 4 * (@t % (Math::PI * 2)) / (Math::PI)
-    when 0.0..0.5
-      @ship_sprite_angle = -90
-    when 0.5..2.5
-      @ship_sprite_angle = 0
-    when 2.5..4.5
-      @ship_sprite_angle = 180
-    when 4.5..6.5
-      @ship_sprite_angle = 90
-    when 6.5..8.0
-      @ship_sprite_angle = -90
-    else
-      @ship_sprite_angle = 0
-      @ship_sprite_path = 'sprites/circle_enemy.png'
-    end
+    @x_thrust = -tmp_x
+    @y_thrust = -tmp_y
   end
 
   def do_tick(cm, player)
@@ -70,6 +59,7 @@ class EnemyLemni < AbstractEnemy
     update_pos
     angle_to_player = Math.atan2(player.y - @y, player.x - @x)
     @turret_sprite_angle = angle_to_player.to_degrees
+    angle_to_player += (rand-0.5) * 0.0
     cm.add_to_group(
         :enemy_bullets,
         SimpleCircleBullet.new(@x + 15 * Math.cos(angle_to_player), @y + 15 * Math.sin(angle_to_player), 3, 2 * Math.cos(angle_to_player), 2 * Math.sin(angle_to_player), 0, 255, 0),
@@ -79,7 +69,17 @@ class EnemyLemni < AbstractEnemy
   # @return [nil]
   # @param [FFI::Draw] ffi_draw
   def draw_override(ffi_draw)
-    ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, @ship_sprite_path, @ship_sprite_angle, nil)
+    if @x_thrust > 0.5
+      ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_thruster.png', 180, nil)
+    elsif @x_thrust < -0.5
+      ffi_draw.draw_sprite(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_thruster.png')
+    end
+    if @y_thrust > 0.5
+      ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_thruster.png', 270, nil)
+    elsif @y_thrust < -0.5
+      ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_thruster.png', 90, nil)
+    end
+    ffi_draw.draw_sprite(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy.png')
     ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_turret.png', @turret_sprite_angle, nil)
   end
   # @return [Symbol]

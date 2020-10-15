@@ -372,11 +372,26 @@ module GeoGeo
     end
   end
 
+  class << self
+    attr_accessor :tests_this_tick, :tests_last_tick, :current_tick
+  end
+  GeoGeo.current_tick = Kernel.tick_count
+  GeoGeo.tests_last_tick = 0
+  GeoGeo.tests_this_tick = 0
 
   # @param [GeoGeo::Box, GeoGeo::Circle, GeoGeo::Polygon] a
   # @param [GeoGeo::Box, GeoGeo::Circle, GeoGeo::Polygon] b
   # @return [Boolean]
   def GeoGeo::intersect?(a, b)
+
+    # DEBUG STAT TRACKING - FEEL FREE TO REMOVE
+    if GeoGeo.current_tick != Kernel.global_tick_count
+      GeoGeo.tests_last_tick = GeoGeo.tests_this_tick
+      GeoGeo.tests_this_tick = 0
+      GeoGeo.current_tick = Kernel.global_tick_count
+    end
+    GeoGeo.tests_this_tick+=1
+
     #noinspection RubyResolve
     GeoGeo::MagicHelper.intersect?(a, b)
   end

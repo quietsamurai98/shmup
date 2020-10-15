@@ -25,7 +25,15 @@ def tock(args)
   args.outputs.background_color = [0, 0, 0]
 end
 
-def tick args
+SceneDeck = [
+    [DelayScene, [60 * 2]],
+    [SwarmWave, []],
+    [DelayScene, [60 * 2]],
+    [LemniWave, []]
+]
+# @param [GTK::Args] args
+# @return [nil]
+def tick(args)
   # Reset/initialization logic
   args.state.clear! if args.inputs.keyboard.key_down.r
   init(args) unless args.state.populated
@@ -36,11 +44,25 @@ def tick args
   args.outputs.primitives << args.state.stars
 
   # Scene logic
-  args.state.scene = LemniWave.new(args.state.cm, args.state.player) if args.state.scene.completed?
+  if args.state.scene.completed?
+    scene_class, scene_args = args.state.scene_deck.shift
+    if scene_args.empty?
+      args.state.scene = scene_class.new(args.state.cm, args.state.player)
+    else
+      args.state.scene = scene_class.new(args.state.cm, args.state.player, *scene_args)
+    end
+    args.state.scene_deck = [*SceneDeck].map { |klass, klargs| [klass, [*klargs]] } if args.state.scene_deck.empty?
+  end
   args.state.scene.do_tick(args)
   args.outputs.primitives << args.state.scene.renderables
 
   # Debug labels
+  args.outputs.labels << {x: 10, y: 120, text: "Collision Pairs : #{
+  args.state.cm.get_group(:enemies).length * args.state.cm.get_group(:player_bullets).length + args.state.cm.get_group(:enemy_bullets).length
+  }", r: 255, g: 0, b: 0}
+  GeoGeo.tests_this_tick = 0 if Kernel.global_tick_count != GeoGeo.current_tick
+  args.outputs.labels << {x: 10, y: 90, text: "Collision Tests : #{GeoGeo.tests_this_tick}", r: 255, g: 0, b: 0}
+  args.outputs.labels << {x: 10, y: 60, text: "Enemies : #{args.state.cm.get_group(:enemies).length}", r: 255, g: 0, b: 0}
   args.outputs.labels << {x: 10, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0}
 end
 
@@ -48,7 +70,9 @@ def init(args)
   args.state.stars = StarField.new
   args.state.player = Player.new
   args.state.cm = ShmupLib::CollisionManager.new
-  args.state.scene = LemniWave.new(args.state.cm, args.state.player)
+  args.state.scene_deck = [*SceneDeck].map { |klass, klargs| [klass, [*klargs]] }
+  scene_class, scene_args = args.state.scene_deck.shift
+  args.state.scene = scene_class.new(args.state.cm, args.state.player, *scene_args)
   args.state.cm.add_group(:players)
   args.state.cm.add_group(:enemies)
   args.state.cm.add_group(:player_bullets)
@@ -98,7 +122,7 @@ class Player
     @collider = GeoGeo::Polygon.new([[-16, -16], [0, 16], [16, -16]],)
     @collider.set_center([@x, @y])
     @cur_fire_cooldown = 0
-    @max_fire_cooldown = 5
+    @max_fire_cooldown = 5 # 30
     @cur_barrel = 0
     @num_barrel = 4
   end
@@ -110,10 +134,15 @@ class Player
     # @type [Array] keys_dh
     keys_dh = args.inputs.keyboard.key[:down_or_held]
     dx, dy = 0, 0
-    dx += 3 if keys_dh.include?(:d)
-    dx -= 3 if keys_dh.include?(:a)
-    dy += 3 if keys_dh.include?(:w)
-    dy -= 3 if keys_dh.include?(:s)
+    dx += 1 if keys_dh.include?(:d)
+    dx -= 1 if keys_dh.include?(:a)
+    dy += 1 if keys_dh.include?(:w)
+    dy -= 1 if keys_dh.include?(:s)
+    if dx != 0 || dy != 0
+      speed_factor = 3 / Math.sqrt(dx * dx + dy * dy)
+      dx *= speed_factor
+      dy *= speed_factor
+    end
     shift(dx, dy) if dx != 0 || dy != 0
     fire(cm, :ripple, dx * 0.1, dy.abs) if args.inputs.mouse.button_left || keys_dh.include?(:q) && !keys_dh.include?(:e)
     fire(cm, :salvo, dx * 0.1, dy.abs) if keys_dh.include?(:e) && !keys_dh.include?(:q) && !args.inputs.mouse.button_left
@@ -145,12 +174,12 @@ class Player
   # @param [ShmupLib::CollisionManager] cm
   def ripple_fire(cm, dx, dy)
     bx, by = [
-        [-10, -2],
-        [-4, -2],
-        [2, -2],
-        [8, -2],
+        [-11, -2],
+        [-5, -2],
+        [1, -2],
+        [7, -2],
     ][@cur_barrel]
-    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + bx, @y + by, 2, 3, 0 + dx, 3 + dy))
+    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + bx, @y + by, 4, 4, 0 + dx, 3 + dy))
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
   end
 
@@ -159,10 +188,10 @@ class Player
     if @cur_barrel == 0
       cm.add_to_group(
           :player_bullets,
-          SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3 + dy)
+          SimpleBoxBullet.new(@x - 11, @y - 2, 4, 4, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x - 5, @y - 2, 4, 4, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x + 1, @y - 2, 4, 4, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x + 7, @y - 2, 4, 4, 0 + dx, 3 + dy)
       )
     end
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
@@ -171,12 +200,18 @@ class Player
   # @param [ShmupLib::CollisionManager] cm
   def volley_fire(cm, dx, dy)
     if @cur_barrel == 0
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 10, @y - 2, 2, 3, 0 + dx, 3 + dy))
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 2, @y - 2, 2, 3, 0 + dx, 3 + dy))
+      cm.add_to_group(
+          :player_bullets,
+          SimpleBoxBullet.new(@x - 11, @y - 2, 4, 4, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x - 5, @y - 2, 4, 4, 0 + dx, 3 + dy)
+      )
     end
     if @cur_barrel == 2
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 4, @y - 2, 2, 3, 0 + dx, 3 + dy))
-      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 8, @y - 2, 2, 3, 0 + dx, 3 + dy))
+      cm.add_to_group(
+          :player_bullets,
+          SimpleBoxBullet.new(@x + 1, @y - 2, 4, 4, 0 + dx, 3 + dy),
+          SimpleBoxBullet.new(@x + 7, @y - 2, 4, 4, 0 + dx, 3 + dy)
+      )
     end
     @cur_barrel = (@cur_barrel + 1) % @num_barrel
   end
@@ -192,7 +227,7 @@ class Player
   # @param [FFI::Draw] ffi_draw
   def draw_override(ffi_draw)
     ffi_draw.draw_sprite_2(@x - 16, @y - 16, 32, 32, "sprites/player.png", nil, nil)
-    if true
+    if false
       @collider.verts.each_cons(2).map do
         # @type [Array] a
         # @type [Array] b
