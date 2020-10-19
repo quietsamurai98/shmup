@@ -135,20 +135,18 @@ module ShmupLib
     # This optimization is primarily useful when members of group2 are loosely spatially ordered
     # @param [Array] group1
     # @param [Array] group2
-    # @param [Integer] fj Used during recursive step. (Note: recursive step currently disabled)
-    # @param [Integer] lj Used during recursive step. (Note: recursive step currently disabled)
+    # @param [GeoGeo::Box] group1_bbox
     # @return [Array]
-    def __pre_sweep_between_groups(group1, group2, fj = nil, lj = nil)
+    def __pre_sweep_between_groups(group1, group2, group1_bbox = nil)
+      il = group1.length
       jl = group2.length
-      fj ||= 0
-      lj ||= jl
-      group1_bbox = __group_bbox(group1)
-      group2_bbox = __group_bbox(group2, fj, lj)
-      j = fj
-      f_j = fj || false
-      l_j = lj || jl
+      group1_bbox ||= __group_bbox(group1, 0, il)
+      group2_bbox = __group_bbox(group2, 0, jl)
+      j = 0
+      f_j = false
+      l_j = jl
       flag = true
-      while j < lj
+      while j < jl
         if GeoGeo::intersect?(group2[j].collider, group1_bbox)
           f_j = j if flag
           l_j = j + 1
@@ -158,10 +156,10 @@ module ShmupLib
       end
       if flag
         f_j = jl
-      elsif f_j != fj || l_j != lj
+      elsif f_j != 0 || l_j != jl
         group2_bbox = __group_bbox(group2, f_j, l_j)
       end
-      return f_j, l_j, group1_bbox, group2_bbox
+      return f_j, l_j, group2_bbox
     end
 
     # @param [Symbol] handle1 The handle for the first collision group.
@@ -177,21 +175,28 @@ module ShmupLib
 
       return colliders if group1.length == 0 || group2.length == 0
 
-      first_j, last_j, group1_bbox, group2_bbox = __pre_sweep_between_groups(group1, group2)
-      il = group1.length
+      first_i, last_i, group1_bbox = __pre_sweep_between_groups(group2, group1)
+
+      return colliders if first_i == last_i
+
+      first_j, last_j, group2_bbox = __pre_sweep_between_groups(group1, group2, group1_bbox)
 
       return colliders if first_j == last_j || !GeoGeo::intersect?(group1_bbox, group2_bbox)
       # TODO: Currently using a naive, brute force check here.
       #   Maybe replace with sort and sweep? Maybe cache collision pairs?
-      i = 0
-      while i < il
+      i = first_i
+      while i < last_i
         a = group1[i]
         if GeoGeo::intersect?(a.collider, group2_bbox)
           j = first_j
           while j < last_j
-            if GeoGeo::intersect?(a.collider, group2[j].collider)
-              colliders[a] = [] unless colliders.has_key? a
-              colliders[a] << group2[j]
+            b = group2[j]
+            if GeoGeo::intersect?(a.collider, b.collider)
+              if colliders.has_key? a
+                colliders[a] << b
+              else
+                colliders[a] = [b]
+              end
               return colliders if bailout == :hard
               break if bailout == :soft
             end

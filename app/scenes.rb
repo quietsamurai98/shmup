@@ -53,11 +53,16 @@ class GenericScene
     # enemy bullets
     tick_enemy_bullets
     # collision manager
-    cm_tick
+    cm_out = cm_tick
     # player
     @player.do_tick(args, @cm)
     # enemies
     tick_enemies
+
+    if cm_out[:game_over]
+      return {game_over: true}
+    end
+    return {}
   end
 
   # @return [nil]
@@ -70,6 +75,7 @@ class GenericScene
       ai.move
       if ai.y < -10 || ai.y > 730 || ai.x < 630 - @area_width / 2 || ai.x > 650 + @area_width / 2
         @cm.del_from_group(:player_bullets, arr[i])
+        @player.update_score({combo_breaker: true})
         i -= 1
         il -= 1
       end
@@ -95,34 +101,40 @@ class GenericScene
   end
 
   def cm_tick
-    enemy_pb_collisions = @cm.first_collision_between(:enemies, :player_bullets)
-    # Why `first_collision_between` rather than `find_all_collisions_between` or `first_collisions_between`?
-    # Doesn't that mean if two different enemies are hit by a player's bullet, only one would be killed on that tick?
-    #
-    # Yes. However, it isn't as big an issue as you'd think.
-    # The likelihood of two different enemies being hit by two different bullets on the same frame is quite small.
-    # Even if it does happen, the collision would be detected on the next tick.
-    #
-    # Now, what if we used one of the other methods?
-    # - One bullet could kill many overlapping enemies. While this could actually be a neat mechanic, it isn't intended for normal bullets (yet).
-    # - When there are many enemies and many bullets, it would be more expensive to check.
+    @cm.get_group(:enemies)
+    @cm.get_group(:player_bullets)
+    enemy_pb_collisions = @cm.first_collisions_between(:enemies, :player_bullets)
 
     unless enemy_pb_collisions.empty?
       enemy_pb_collisions.each do
         # @type [AbstractEnemy] enemy
         # @type [Array<AbstractBullet>] bullets
       |enemy, bullets|
-        bullets.each { |b| enemy.health -= b.damage }
+        bullets.each do |b|
+          if cm.del_from_group(:player_bullets, b)
+            enemy.health -= b.damage
+            @player.update_score({combo_inc: 1})
+          end
+        end
 
         if enemy.health <= 0
           cm.del_from_group(:enemies, enemy)
+          @player.update_score({score_inc: 1})
         end
-        bullets.each { |b| cm.del_from_group(:player_bullets, b) }
       end
     end
-    if cm.any_collision_between?(:enemy_bullets, :players)
-      # $state.populated = false
+    cm.find_all_collisions_between(:players, :enemy_bullets).each do
+      # @type [Player] players
+      # @type [Array<AbstractBullet>] bullets
+    |player, bullets|
+      if bullets.any? {|b| GeoGeo::intersect?(player.hurt_box, b.collider)}
+        return {game_over: true}
+      else
+        # 1*combo points per grazing bullet, per tick.
+        player.update_score({score_inc: 1})
+      end
     end
+    return {game_over: false}
   end
 
   # @return [nil]
@@ -186,13 +198,14 @@ class SwarmWave < GenericScene
   def build_spawn_table
     table = {}
     speed_div = 200
-    spawn_rate = 8
+    spawn_rate = 32
     # Good values for speed_div and spawn_rate satisfy the following equation: (2*speed_div/spawn_rate) % 2 == 1
     count = 2 * speed_div / spawn_rate
+    fire_delay = 60 * 12
     i = 1
     while i <= count
-      table[spawn_rate * i] = [[EnemyLemni, [Math::PI / speed_div, 300, 200, 100, 640, 500, Math::PI * 2 * rand, 60 * 5.2, spawn_rate * (count - i + 5)]]]
-      table[spawn_rate * i + spawn_rate / 2] = [[EnemyLemni, [Math::PI / speed_div, -300, -200, -100, 640, 500, Math::PI * 2 * rand, 60 * 5.2, spawn_rate * (count - i + 5) + 60 * 5.2 / 2]]]
+      table[spawn_rate * i] = [[EnemyLemni, [Math::PI / speed_div, 300, 200, 100, 640, 500, Math::PI * 2 * rand, fire_delay, spawn_rate * (count - i + 5)]]]
+      table[spawn_rate * i + spawn_rate / 2] = [[EnemyLemni, [Math::PI / speed_div, -300, -200, -100, 640, 500, Math::PI * 2 * rand, fire_delay, spawn_rate * (count - i + 5) + fire_delay / 2]]]
       i += 1
     end
     table

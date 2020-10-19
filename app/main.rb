@@ -1,3 +1,4 @@
+require 'patches/core.rb'
 require 'patches/console.rb'
 require 'patches/console_prompt.rb'
 require 'patches/framerate_diagnostics.rb'
@@ -25,23 +26,26 @@ def tock(args)
   args.outputs.background_color = [0, 0, 0]
 end
 
+
 SceneDeck = [
     [DelayScene, [60 * 2]],
-    [SwarmWave, []],
+    [LemniWave, []],
     [DelayScene, [60 * 2]],
-    [LemniWave, []]
+    [SwarmWave, []],
 ]
 # @param [GTK::Args] args
 # @return [nil]
 def tick(args)
   # Reset/initialization logic
-  args.state.clear! if args.inputs.keyboard.key_down.r
-  init(args) unless args.state.populated
+  args.state.populated = nil if args.inputs.keyboard.key_down.r
+  init(args) if args.state.populated == nil
+
+  args.inputs.keyboard.key_down.q = true
 
   # Background rendering
   args.outputs.background_color = [0, 0, 0]
   args.state.stars.do_tick
-  args.outputs.primitives << args.state.stars
+  args.outputs.sprites << args.state.stars
 
   # Scene logic
   if args.state.scene.completed?
@@ -52,21 +56,36 @@ def tick(args)
       args.state.scene = scene_class.new(args.state.cm, args.state.player, *scene_args)
     end
     args.state.scene_deck = [*SceneDeck].map { |klass, klargs| [klass, [*klargs]] } if args.state.scene_deck.empty?
+    args.state.player.scoring_data[:full_combo] = true
   end
-  args.state.scene.do_tick(args)
+  st_out = args.state.scene.do_tick(args)
   args.outputs.primitives << args.state.scene.renderables
+  if st_out[:game_over]
+    args.state.populated = nil
+    return
+  end
+
+  GeoGeo.tests_this_tick = 0 if Kernel.global_tick_count != GeoGeo.current_tick
+  brute_pairs += args.state.cm.get_group(:enemies).length * args.state.cm.get_group(:player_bullets).length + args.state.cm.get_group(:enemy_bullets).length
+  $all_brute_pairs += args.state.cm.get_group(:enemies).length * args.state.cm.get_group(:player_bullets).length + args.state.cm.get_group(:enemy_bullets).length
+  $all_actual_tests += GeoGeo.tests_this_tick
+
+  args.outputs.labels << {x: 10, y: 10.from_top, text: "Score : #{args.state.player.score}", r: 255, g: 0, b: 0}
+  args.outputs.labels << {x: 10, y: 40.from_top, text: "Combo : #{args.state.player.scoring_data[:combo] * (args.state.player.scoring_data[:full_combo] ? 10 : 1)}x", r: 255, g: 0, b: 0}
 
   # Debug labels
-  args.outputs.labels << {x: 10, y: 120, text: "Collision Pairs : #{
-  args.state.cm.get_group(:enemies).length * args.state.cm.get_group(:player_bullets).length + args.state.cm.get_group(:enemy_bullets).length
-  }", r: 255, g: 0, b: 0}
-  GeoGeo.tests_this_tick = 0 if Kernel.global_tick_count != GeoGeo.current_tick
-  args.outputs.labels << {x: 10, y: 90, text: "Collision Tests : #{GeoGeo.tests_this_tick}", r: 255, g: 0, b: 0}
-  args.outputs.labels << {x: 10, y: 60, text: "Enemies : #{args.state.cm.get_group(:enemies).length}", r: 255, g: 0, b: 0}
+  args.outputs.debug << {x: 10, y: 210, text: "Current Scene   : #{args.state.scene.class.name}", r: 255, g: 0, b: 0}
+  args.outputs.debug << {x: 10, y: 180, text: "Collision Pairs : #{brute_pairs}", r: 255, g: 0, b: 0}
+  args.outputs.debug << {x: 10, y: 150, text: "Collision Tests : #{GeoGeo.tests_this_tick}", r: 255, g: 0, b: 0}
+  args.outputs.debug << {x: 10, y: 120, text: "Pairs/Tests     : #{GeoGeo.tests_this_tick == 0 ? '∞' : (brute_pairs / GeoGeo.tests_this_tick).round}", r: 255, g: 0, b: 0}
+  args.outputs.debug << {x: 10, y: 90, text:  "Avg Pairs/Tests : #{$all_actual_tests == 0 ? '∞' : ($all_brute_pairs / $all_actual_tests).round}", r: 255, g: 0, b: 0}
+  args.outputs.debug << {x: 10, y: 60, text:  "Enemies : #{args.state.cm.get_group(:enemies).length}", r: 255, g: 0, b: 0}
   args.outputs.labels << {x: 10, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0}
 end
 
 def init(args)
+  $all_brute_pairs = 0
+  $all_actual_tests = 0
   args.state.stars = StarField.new
   args.state.player = Player.new
   args.state.cm = ShmupLib::CollisionManager.new
@@ -114,17 +133,33 @@ class StarField
 end
 
 class Player
-  attr_accessor :collider, :x, :y
+  attr_accessor :collider, :x, :y, :hurt_box, :score, :scoring_data
 
   def initialize
     @x = 640
     @y = 64
-    @collider = GeoGeo::Polygon.new([[-16, -16], [0, 16], [16, -16]],)
+    @collider = GeoGeo::Polygon.new([[-16, -16], [0, 16], [16, -16]])
+    @hurt_box = GeoGeo::Box.new_drgtk(@x-2, @y-2, 4, 4)
     @collider.set_center([@x, @y])
     @cur_fire_cooldown = 0
-    @max_fire_cooldown = 5 # 30
-    @cur_barrel = 0
-    @num_barrel = 4
+    @max_fire_cooldown = 10
+    @ripple_barrel_left = true
+    @score = 0
+    @scoring_data = {
+        combo: 1,
+        full_combo: true
+    }
+  end
+
+  # @return [nil]
+  # @param [Hash] params
+  def update_score(params = {})
+    @scoring_data[:combo] += params[:combo_inc] || 0
+    if params[:combo_breaker]
+      @scoring_data[:full_combo] = false
+      @scoring_data[:combo] = 1
+    end
+    @score += (params[:score_inc] || 0) * @scoring_data[:combo] * (@scoring_data[:full_combo] ? 10 : 1)
   end
 
   # @param [GTK::Args] args
@@ -144,9 +179,8 @@ class Player
       dy *= speed_factor
     end
     shift(dx, dy) if dx != 0 || dy != 0
-    fire(cm, :ripple, dx * 0.1, dy.abs) if args.inputs.mouse.button_left || keys_dh.include?(:q) && !keys_dh.include?(:e)
-    fire(cm, :salvo, dx * 0.1, dy.abs) if keys_dh.include?(:e) && !keys_dh.include?(:q) && !args.inputs.mouse.button_left
-    fire(cm, :volley, dx * 0.1, dy.abs) if keys_dh.include?(:q) && keys_dh.include?(:e) && !args.inputs.mouse.button_left
+    fire(cm, :ripple, dx * 0.1, 0) if args.inputs.mouse.button_left
+    fire(cm, :salvo, dx * 0.1, 0) if args.inputs.mouse.button_right && !args.inputs.mouse.button_left
     @cur_fire_cooldown -= 1 if @cur_fire_cooldown > 0
   end
 
@@ -157,6 +191,7 @@ class Player
     @x += dx
     @y += dy
     @collider.shift(dx, dy)
+    @hurt_box.shift(dx, dy)
   end
 
   # @param [ShmupLib::CollisionManager] cm
@@ -164,56 +199,31 @@ class Player
   # @return [nil]
   def fire(cm, mode, dx, dy)
     if @cur_fire_cooldown == 0
-      ripple_fire(cm, dx, dy) if mode == :ripple
-      volley_fire(cm, dx, dy) if mode == :volley
-      salvo_fire(cm, dx, dy) if mode == :salvo
-      @cur_fire_cooldown = @max_fire_cooldown
+      if mode == :ripple
+        ripple_fire(cm, dx, dy)
+        @cur_fire_cooldown = @max_fire_cooldown
+      end
+      if mode == :salvo
+        salvo_fire(cm, dx, dy)
+        @cur_fire_cooldown = @max_fire_cooldown + @max_fire_cooldown
+      end
     end
   end
 
   # @param [ShmupLib::CollisionManager] cm
   def ripple_fire(cm, dx, dy)
-    bx, by = [
-        [-11, -2],
-        [-5, -2],
-        [1, -2],
-        [7, -2],
-    ][@cur_barrel]
-    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + bx, @y + by, 4, 4, 0 + dx, 3 + dy))
-    @cur_barrel = (@cur_barrel + 1) % @num_barrel
+    if @ripple_barrel_left
+      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 8, @y - 1, 4, 4, 0 + dx, 4 + dy))
+    else
+      cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 4, @y - 1, 4, 4, 0 + dx, 4 + dy))
+    end
+    @ripple_barrel_left = !@ripple_barrel_left
   end
 
   # @param [ShmupLib::CollisionManager] cm
   def salvo_fire(cm, dx, dy)
-    if @cur_barrel == 0
-      cm.add_to_group(
-          :player_bullets,
-          SimpleBoxBullet.new(@x - 11, @y - 2, 4, 4, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x - 5, @y - 2, 4, 4, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x + 1, @y - 2, 4, 4, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x + 7, @y - 2, 4, 4, 0 + dx, 3 + dy)
-      )
-    end
-    @cur_barrel = (@cur_barrel + 1) % @num_barrel
-  end
-
-  # @param [ShmupLib::CollisionManager] cm
-  def volley_fire(cm, dx, dy)
-    if @cur_barrel == 0
-      cm.add_to_group(
-          :player_bullets,
-          SimpleBoxBullet.new(@x - 11, @y - 2, 4, 4, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x - 5, @y - 2, 4, 4, 0 + dx, 3 + dy)
-      )
-    end
-    if @cur_barrel == 2
-      cm.add_to_group(
-          :player_bullets,
-          SimpleBoxBullet.new(@x + 1, @y - 2, 4, 4, 0 + dx, 3 + dy),
-          SimpleBoxBullet.new(@x + 7, @y - 2, 4, 4, 0 + dx, 3 + dy)
-      )
-    end
-    @cur_barrel = (@cur_barrel + 1) % @num_barrel
+    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x - 8, @y - 1, 4, 4, 0 + dx, 3 + dy))
+    cm.add_to_group(:player_bullets, SimpleBoxBullet.new(@x + 4, @y - 1, 4, 4, 0 + dx, 3 + dy))
   end
 
   # Instead of mucking around with doing `array.map(&:renderables)`, just... make the object renderable.

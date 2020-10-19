@@ -3,10 +3,34 @@
 # SimpleBoxBullet is an example of a solid bullet.
 class AbstractBullet
   attr_accessor :damage
+  # @return [GeoGeo::Shape2D]
+  attr_accessor :collider
+
+  # @return [nil]
+  # @param [Array<Object>] arguments
+  def initialize(*arguments)
+    @collider = GeoGeo::Shape2D.new(0,0,0,0)
+  end
+
+  def <=> o
+    @collider.bottom <=> o.collider.top
+  end
+
+  # @return [Integer]
+  # @param [AbstractBullet] other
+  def compare_bottom(other)
+    @collider.bottom <=> other.collider.bottom
+  end
+  # @return [Integer]
+  # @param [AbstractBullet] other
+  def compare_left(other)
+    @collider.left <=> other.collider.left
+  end
+
 end
 
 class SimpleCircleBullet < AbstractBullet
-  attr_accessor :collider, :x, :y
+  attr_accessor :x, :y
 
   # @return [nil]
   # @param [Integral] x

@@ -379,8 +379,8 @@ module GeoGeo
   GeoGeo.tests_last_tick = 0
   GeoGeo.tests_this_tick = 0
 
-  # @param [GeoGeo::Box, GeoGeo::Circle, GeoGeo::Polygon] a
-  # @param [GeoGeo::Box, GeoGeo::Circle, GeoGeo::Polygon] b
+  # @param [GeoGeo::Shape2D] a
+  # @param [GeoGeo::Shape2D] b
   # @return [Boolean]
   def GeoGeo::intersect?(a, b)
 

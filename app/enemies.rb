@@ -1,10 +1,13 @@
 class AbstractEnemy
+  # @return [GeoGeo::Shape2D]
   attr_accessor :collider
   attr_accessor :health
 
   # @return [nil]
   # @param [Array<Object>] arguments
-  def initialize(*arguments) end
+  def initialize(*arguments)
+    @collider = GeoGeo::Shape2D.new(0,0,0,0)
+  end
 
   # @return [nil]
   def update_pos
@@ -20,11 +23,26 @@ class AbstractEnemy
   def renderables
     []
   end
+
+  def <=> o
+    @collider.bottom <=> o.collider.bottom
+  end
+
+  # @return [Integer]
+  # @param [AbstractEnemy] other
+  def compare_bottom(other)
+    @collider.bottom <=> other.collider.bottom
+  end
+  # @return [Integer]
+  # @param [AbstractEnemy] other
+  def compare_left(other)
+    @collider.left <=> other.collider.left
+  end
 end
 
 class EnemyLemni < AbstractEnemy
   def initialize(speed, initial_orbit_width, final_orbit_width, orbit_height, orbit_center_x, orbit_center_y, orbit_y_delta, fire_rate, fire_delay)
-    @health = 1
+    @health = 3
     @t = 0
     @speed = speed
     @age = -1
@@ -57,7 +75,7 @@ class EnemyLemni < AbstractEnemy
     @t += @speed
     @age += 1
     update_pos
-    angle_to_player = Math.atan2(player.y - @y, player.x - @x)
+    angle_to_player = -Math::PI/2 #Math.atan2(player.y - @y, player.x - @x)
     @turret_sprite_angle = angle_to_player.to_degrees
     angle_to_player += (rand-0.5) * 0.0
     cm.add_to_group(
