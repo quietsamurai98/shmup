@@ -5,6 +5,8 @@ class AbstractBullet
   attr_accessor :damage
   # @return [GeoGeo::Shape2D]
   attr_accessor :collider
+  # @return [Integral]
+  attr_accessor :x, :y
 
   # @return [nil]
   # @param [Array<Object>] arguments
@@ -27,10 +29,13 @@ class AbstractBullet
     @collider.left <=> other.collider.left
   end
 
+  # @return [nil]
+  def move
+
+  end
 end
 
 class SimpleCircleBullet < AbstractBullet
-  attr_accessor :x, :y
 
   # @return [nil]
   # @param [Integral] x

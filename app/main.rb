@@ -27,12 +27,20 @@ def tock(args)
 end
 
 
+# SceneDeck = [
+#     [DelayScene, [60 * 2]],
+#     [LemniWave, []],
+#     [DelayScene, [60 * 2]],
+#     [SwarmWave, []],
+# ]
+
 SceneDeck = [
-    [DelayScene, [60 * 2]],
-    [LemniWave, []],
-    [DelayScene, [60 * 2]],
-    [SwarmWave, []],
+    [BossCurtainOpen, []],
+    [DelayScene, [60 * 1]],
+    [BossCurtainClose, []],
+    [DelayScene, [60 * 1]],
 ]
+
 # @param [GTK::Args] args
 # @return [nil]
 def tick(args)
@@ -49,11 +57,12 @@ def tick(args)
 
   # Scene logic
   if args.state.scene.completed?
+    args.state.prev_scene = args.state.scene
     scene_class, scene_args = args.state.scene_deck.shift
     if scene_args.empty?
-      args.state.scene = scene_class.new(args.state.cm, args.state.player)
+      args.state.scene = scene_class.new(args.state.cm, args.state.player, args.state.prev_scene)
     else
-      args.state.scene = scene_class.new(args.state.cm, args.state.player, *scene_args)
+      args.state.scene = scene_class.new(args.state.cm, args.state.player, args.state.prev_scene, *scene_args)
     end
     args.state.scene_deck = [*SceneDeck].map { |klass, klargs| [klass, [*klargs]] } if args.state.scene_deck.empty?
     args.state.player.scoring_data[:full_combo] = true
@@ -74,13 +83,18 @@ def tick(args)
   args.outputs.labels << {x: 10, y: 40.from_top, text: "Combo : #{args.state.player.scoring_data[:combo] * (args.state.player.scoring_data[:full_combo] ? 10 : 1)}x", r: 255, g: 0, b: 0}
 
   # Debug labels
-  args.outputs.debug << {x: 10, y: 210, text: "Current Scene   : #{args.state.scene.class.name}", r: 255, g: 0, b: 0}
-  args.outputs.debug << {x: 10, y: 180, text: "Collision Pairs : #{brute_pairs}", r: 255, g: 0, b: 0}
-  args.outputs.debug << {x: 10, y: 150, text: "Collision Tests : #{GeoGeo.tests_this_tick}", r: 255, g: 0, b: 0}
-  args.outputs.debug << {x: 10, y: 120, text: "Pairs/Tests     : #{GeoGeo.tests_this_tick == 0 ? '∞' : (brute_pairs / GeoGeo.tests_this_tick).round}", r: 255, g: 0, b: 0}
-  args.outputs.debug << {x: 10, y: 90, text:  "Avg Pairs/Tests : #{$all_actual_tests == 0 ? '∞' : ($all_brute_pairs / $all_actual_tests).round}", r: 255, g: 0, b: 0}
-  args.outputs.debug << {x: 10, y: 60, text:  "Enemies : #{args.state.cm.get_group(:enemies).length}", r: 255, g: 0, b: 0}
-  args.outputs.labels << {x: 10, y: 30, text: "FPS : #{$gtk.current_framerate.to_s.to_i}", r: 255, g: 0, b: 0}
+  texts = [
+      "FPS: #{$gtk.current_framerate.to_s.to_i}",
+      "Enemies: #{args.state.cm.get_group(:enemies).length}",
+      "Avg Pairs/Tests: #{$all_actual_tests == 0 ? '∞' : ($all_brute_pairs / $all_actual_tests).round}",
+      "Pairs/Tests    : #{GeoGeo.tests_this_tick == 0 ? '∞' : (brute_pairs / GeoGeo.tests_this_tick).round}",
+      "Collision Tests: #{GeoGeo.tests_this_tick}",
+      "Collision Pairs: #{brute_pairs}",
+      "Scene: #{args.state.scene.class.name}",
+  ]
+  args.outputs.debug << texts.each_with_index.map do |text, idx|
+    {x: 10, y: 20 * (idx + 1), text: text, r: 255, g: 0, b: 0, size_enum: -4}
+  end
 end
 
 def init(args)
@@ -91,7 +105,8 @@ def init(args)
   args.state.cm = ShmupLib::CollisionManager.new
   args.state.scene_deck = [*SceneDeck].map { |klass, klargs| [klass, [*klargs]] }
   scene_class, scene_args = args.state.scene_deck.shift
-  args.state.scene = scene_class.new(args.state.cm, args.state.player, *scene_args)
+  args.state.prev_scene = nil
+  args.state.scene = scene_class.new(args.state.cm, args.state.player, args.state.prev_scene, *scene_args)
   args.state.cm.add_group(:players)
   args.state.cm.add_group(:enemies)
   args.state.cm.add_group(:player_bullets)
@@ -133,13 +148,13 @@ class StarField
 end
 
 class Player
-  attr_accessor :collider, :x, :y, :hurt_box, :score, :scoring_data
+  attr_accessor :collider, :x, :y, :hurt_box, :score, :scoring_data, :max_speed, :allow_player_control
 
   def initialize
     @x = 640
     @y = 64
     @collider = GeoGeo::Polygon.new([[-16, -16], [0, 16], [16, -16]])
-    @hurt_box = GeoGeo::Box.new_drgtk(@x-2, @y-2, 4, 4)
+    @hurt_box = GeoGeo::Box.new_drgtk(@x - 2, @y - 2, 4, 4)
     @collider.set_center([@x, @y])
     @cur_fire_cooldown = 0
     @max_fire_cooldown = 10
@@ -149,6 +164,8 @@ class Player
         combo: 1,
         full_combo: true
     }
+    @max_speed = 3
+    @allow_player_control = true
   end
 
   # @return [nil]
@@ -169,12 +186,14 @@ class Player
     # @type [Array] keys_dh
     keys_dh = args.inputs.keyboard.key[:down_or_held]
     dx, dy = 0, 0
-    dx += 1 if keys_dh.include?(:d)
-    dx -= 1 if keys_dh.include?(:a)
-    dy += 1 if keys_dh.include?(:w)
-    dy -= 1 if keys_dh.include?(:s)
+    if @allow_player_control
+      dx += 1 if keys_dh.include?(:d)
+      dx -= 1 if keys_dh.include?(:a)
+      dy += 1 if keys_dh.include?(:w)
+      dy -= 1 if keys_dh.include?(:s)
+    end
     if dx != 0 || dy != 0
-      speed_factor = 3 / Math.sqrt(dx * dx + dy * dy)
+      speed_factor = @max_speed / Math.sqrt(dx * dx + dy * dy)
       dx *= speed_factor
       dy *= speed_factor
     end
