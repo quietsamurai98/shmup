@@ -6,7 +6,7 @@ class AbstractEnemy
   # @return [nil]
   # @param [Array<Object>] arguments
   def initialize(*arguments)
-    @collider = GeoGeo::Shape2D.new(0,0,0,0)
+    @collider = GeoGeo::Shape2D.new(0, 0, 0, 0)
   end
 
   # @return [nil]
@@ -33,6 +33,7 @@ class AbstractEnemy
   def compare_bottom(other)
     @collider.bottom <=> other.collider.bottom
   end
+
   # @return [Integer]
   # @param [AbstractEnemy] other
   def compare_left(other)
@@ -64,20 +65,22 @@ class EnemyLemni < AbstractEnemy
     x_factor += (@initial_orbit_width - @final_orbit_width) * (1 - @t) if @t < 1
     tmp_x = Math.cos(@t)
     @x = tmp_x * x_factor + @orbit_center_x
-    tmp_y = Math.sin(2 * (@t+@orbit_y_delta))
+    tmp_y = Math.sin(2 * (@t + @orbit_y_delta))
     @y = tmp_y * @orbit_height + @orbit_center_y
     @collider.set_center(@x, @y)
-    @x_thrust = -tmp_x
-    @y_thrust = -tmp_y
+    tmp_x *= 0 <=> x_factor
+    tmp_y *= 0 <=> @orbit_height
+    @x_thrust = tmp_x
+    @y_thrust = tmp_y
   end
 
   def do_tick(cm, player)
     @t += @speed
     @age += 1
     update_pos
-    angle_to_player = -Math::PI/2 #Math.atan2(player.y - @y, player.x - @x)
+    angle_to_player = Math.atan2(player.y - @y, player.x - @x)
     @turret_sprite_angle = angle_to_player.to_degrees
-    angle_to_player += (rand-0.5) * 0.0
+    angle_to_player += (rand - 0.5) * 0.0
     cm.add_to_group(
         :enemy_bullets,
         SimpleCircleBullet.new(@x + 15 * Math.cos(angle_to_player), @y + 15 * Math.sin(angle_to_player), 3, 2 * Math.cos(angle_to_player), 2 * Math.sin(angle_to_player), 0, 255, 0),
@@ -100,39 +103,7 @@ class EnemyLemni < AbstractEnemy
     ffi_draw.draw_sprite(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy.png')
     ffi_draw.draw_sprite_2(@x - 20, @y - 20, 40, 40, 'sprites/circle_enemy_turret.png', @turret_sprite_angle, nil)
   end
-  # @return [Symbol]
-  def primitive_marker
-    :sprite
-  end
-end
 
-class BossLaserTurret < AbstractEnemy
-  def initialize(x, y)
-    @collider = GeoGeo::Box.new(-1, 0, -1, 0)
-    @x = x
-    @y = y
-    @age = -1
-    @turret_sprite_angle = -90
-    @phase = 0
-  end
-
-  def update_pos
-
-  end
-
-  def do_tick(cm, player)
-    @age += 1
-    @phase = 5#(@age / 60).floor % 6
-    angle_to_player = Math.atan2(player.y - @y, player.x - @x)
-    @turret_sprite_angle += (angle_to_player.to_degrees - @turret_sprite_angle).clamp(-2, 2) if @phase < 4 ||true
-  end
-
-  # @return [nil]
-  # @param [FFI::Draw] ffi_draw
-  def draw_override(ffi_draw)
-    ffi_draw.draw_sprite_2(@x - 1500, @y - 16, 3000, 32, 'sprites/tmp_beam.png', @turret_sprite_angle, nil) if @phase == 5
-    ffi_draw.draw_sprite_2(@x - 64, @y - 64, 128, 128, "sprites/boss_beam_turret_#{(@phase).floor}.png", @turret_sprite_angle, nil)
-  end
   # @return [Symbol]
   def primitive_marker
     :sprite
@@ -171,26 +142,6 @@ class BossFigure8Enemy
       @y = Math.sin(2 * @t + 3 * Math::PI / 2) * 200 + 360
       @ship_sprite_angle = 0
       @ship_sprite_path = 'sprites/circle_enemy.png'
-      # case (4 * (@t % (Math::PI * 2)) / (Math::PI) + 3) % 8
-      # when 0.0..0.5
-      #   @ship_sprite_angle = -90
-      #   @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
-      # when 0.5..2.5
-      #   @ship_sprite_angle = 0
-      #   @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
-      # when 2.5..4.5
-      #   @ship_sprite_angle = 180
-      #   @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
-      # when 4.5..6.5
-      #   @ship_sprite_angle = 90
-      #   @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
-      # when 6.5..8.0
-      #   @ship_sprite_angle = -90
-      #   @ship_sprite_path = 'sprites/circle_enemy_thrust2.png'
-      # else
-      #   @ship_sprite_angle = 0
-      #   @ship_sprite_path = 'sprites/circle_enemy.png'
-      # end
     end
 
     @collider.set_center(@x, @y)
@@ -286,5 +237,165 @@ class SimpleWideEnemy
         a: 128
     }.border if false
     out
+  end
+end
+
+class Boss1 < AbstractEnemy
+  attr_accessor :x, :y, :age
+
+  def initialize(x, y, moving)
+    @x = x
+    @y = y
+    @age = 0
+    @moving = moving
+    @collider = GeoGeo::Polygon.new(
+        [
+            [0, 80],
+            [60, 64],
+            [73, 53],
+            [173, 53],
+            [208, 33],
+            [318, 33],
+            [357, 0],
+            [443, 0],
+            [482, 33],
+            [592, 33],
+            [627, 53],
+            [727, 53],
+            [740, 64],
+            [800, 80],
+            [800, 157],
+            [632, 200],
+            [168, 200],
+            [0, 157],
+        ],
+        [400, 100]
+    )
+  end
+
+  def update_pos
+    @collider.set_center([@x, @y])
+  end
+
+  def do_tick(cm, player)
+    @age += 1
+  end
+
+  def renderables
+    [self]
+  end
+
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite(@x - 400, @y - 100, 800, 200, "sprites/boss1/main.png")
+    ffi_draw.draw_sprite(@x - 359, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/orange#{(@age / 6).floor % 3 + 4}.png")
+    ffi_draw.draw_sprite(@x - 359, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/red#{(@age / 6 + 2).floor % 3 + 4}.png")
+    ffi_draw.draw_sprite(@x - 359, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/yellow#{(@age / 6 + 4).floor % 3 + 4}.png")
+    ffi_draw.draw_sprite(@x - 55, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/orange#{(@age / 6).floor % 6 + 1}.png")
+    ffi_draw.draw_sprite(@x - 55, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/red#{(@age / 6 + 1).floor % 6 + 1}.png")
+    ffi_draw.draw_sprite(@x - 55, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/yellow#{(@age / 6 + 2).floor % 6 + 1}.png")
+    ffi_draw.draw_sprite(@x + 249, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/orange#{(@age / 6).floor % 3 + 1}.png")
+    ffi_draw.draw_sprite(@x + 249, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/red#{(@age / 6 + 2).floor % 3 + 1}.png")
+    ffi_draw.draw_sprite(@x + 249, @y + 71, 110, @moving ? 20 : 20, "sprites/boss1/thruster_fx/yellow#{(@age / 6 + 4).floor % 3 + 1}.png")
+    # blast_frames = 9.times.flat_map {|i| [i]*(i > 7 ? 6 : 4) } + [9]*30
+    # [73, 80, 82, 83, 85, 87, 90, 91].each_with_index do |n,i|
+    #   ffi_draw.draw_sprite_3(640-64+(32*(i%4)), 550+32*(i.fdiv(4.0).floor), 32, 32, "sprites/explosions/32_#{n}.png",nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,nil,32*(@age % 90),0,32,32)
+    # end
+    if false
+      @collider.verts.each_cons(2).map do
+        # @type [Array] a
+        # @type [Array] b
+      |a, b|
+        ffi_draw.draw_line(a.x, a.y, b.x, b.y, 0, 255, 0, 255)
+      end
+    end
+  end
+
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
+  end
+end
+
+class BossLaserTurret < AbstractEnemy
+  attr_reader :beam_collider
+  def initialize(x, y)
+    @turret_sprite_angle = -90
+    @internal_angle = -90
+    @x = x
+    @y = y
+    @collider = GeoGeo::Polygon.new([[70, 32], [118, 45], [118, 82], [70, 95], [57, 95], [41, 86], [32, 69], [32, 57], [41, 41], [58, 32]], [64, 64])
+    @collider.set_center([@x, @y])
+    @collider.theta = @turret_sprite_angle.to_radians
+    @beam_collider = GeoGeo::Polygon.new([[118, 46], [119, 46], [119, 80], [118, 80], [118, 82]], [64, 64])
+    @beam_collider.set_center([@x, @y])
+    @beam_collider.theta = @turret_sprite_angle.to_radians
+    @age = -1
+    @phase = 1
+    @moved = 0
+    @health = 25
+  end
+
+  def update_pos(dx, dy)
+    @x += dx
+    @y += dy
+    @collider.set_center([@x, @y])
+    @beam_collider.set_center([@x, @y]) if @beam_collider != @collider
+    @moved = @age + 1
+  end
+
+  def do_tick(cm, player)
+    @age += 1
+    phase_change = (@age / 90 - 1).floor % 6 - @phase != 0 && @y < 720
+    @phase += (@age / 90 - 1).floor % 6 - @phase if @y < 720
+    angle_to_player = Math.atan2(player.y - @y, player.x - @x).to_degrees
+    delta_angle = (angle_to_player - 90) % 360 - (@internal_angle - 90) % 360
+    if @phase < 4
+      @internal_angle += delta_angle.clamp(-1, 1)
+      @internal_angle = -90 if @moved == @age
+      @turret_sprite_angle = @internal_angle
+      @collider.theta = @turret_sprite_angle.to_radians if delta_angle.abs > 0.0001
+      @beam_collider.theta = @turret_sprite_angle.to_radians if delta_angle.abs > 0.0001
+    end
+    # Since we are using the turret itself the damage dealer, we need to change the collider to match the visual hitbox.
+    if phase_change
+      if @phase == 0
+        @beam_collider = GeoGeo::Polygon.new([[118, 46], [119, 46], [119, 80], [118, 80], [118, 82]], [64, 64])
+        @beam_collider.set_center([@x, @y])
+        @beam_collider.theta = @turret_sprite_angle.to_radians
+      end
+      if @phase == 5
+        @beam_collider = GeoGeo::Polygon.new([[118, 48], [1618, 48], [1618, 80], [118, 80], [118, 82]], [64, 64])
+        @beam_collider.set_center([@x, @y])
+        @beam_collider.theta = @turret_sprite_angle.to_radians
+      end
+    end
+  end
+
+  # @return [nil]
+  # @param [FFI::Draw] ffi_draw
+  def draw_override(ffi_draw)
+    ffi_draw.draw_sprite_2(@x - 1500, @y - 16, 3000, 32, 'sprites/tmp_beam.png', @turret_sprite_angle.round, nil) if @phase == 5
+    ffi_draw.draw_sprite_2(@x - 64, @y - 64, 128, 128, "sprites/boss_beam_turret_#{(@phase).floor}.png", @turret_sprite_angle, nil)
+    if false
+      @collider.verts.each_cons(2).map do
+        # @type [Array] a
+        # @type [Array] b
+      |a, b|
+        ffi_draw.draw_line(a.x, a.y, b.x, b.y, 0, 255, 0, 255)
+      end
+      @beam_collider.verts.each_cons(2).map do
+        # @type [Array] a
+        # @type [Array] b
+      |a, b|
+        ffi_draw.draw_line(a.x, a.y, b.x, b.y, 255, 0, 255, 255)
+      end
+    end
+  end
+
+  # @return [Symbol]
+  def primitive_marker
+    :sprite
   end
 end

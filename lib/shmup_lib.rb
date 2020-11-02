@@ -244,5 +244,10 @@ module ShmupLib
       end
       colliders
     end
+
+    def inspect
+      #FIXME: This is just to placate DRGTK.
+      self.class.name
+    end
   end
 end

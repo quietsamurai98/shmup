@@ -19,7 +19,7 @@ class GenericScene
     @scene_tick = -1 # Negative one, since we want the first tick to be tick zero.
     _spawn_table = build_spawn_table
     @spawn_table = _spawn_table #spawn_tick => [[enemy1_class, [enemy1_initialization_args]],[enemy2_class, [enemy2_initialization_args]], ...]
-    @area_width = 540 # 3:4 aspect ratio, like old-school vertical shooters.
+    @area_width = last_scene&.area_width || 540 # Use the last scene's width, falling back to a 3:4 aspect ratio, like old-school vertical shooters.
     @cm = cm # The collision manager
     @player = player # The player
     @first_spawn_tick = _spawn_table.keys.min
@@ -121,13 +121,14 @@ class GenericScene
         bullets.each do |b|
           if cm.del_from_group(:player_bullets, b)
             enemy.health -= b.damage
-            @player.update_score({combo_inc: 1})
+            if enemy.health <= 0
+              cm.del_from_group(:enemies, enemy)
+              @player.update_score({score_inc: 1, combo_inc: 1})
+              break
+            else
+              @player.update_score({combo_inc: 1})
+            end
           end
-        end
-
-        if enemy.health <= 0
-          cm.del_from_group(:enemies, enemy)
-          @player.update_score({score_inc: 1})
         end
       end
     end
@@ -176,7 +177,7 @@ class GenericScene
         @cm.get_group(:enemy_bullets),
         [
             {x: 0, y: 0, w: (1280 - @area_width) / 2, h: 720, r: 50, g: 0, b: 0, a: 255}.solid,
-            {x: @area_width + (1280 - @area_width) / 2, y: 0, w: (1280 - @area_width) / 2, h: 720, r: 50, g: 0, b: 0, a: 255}.solid,
+            {x: (1280 + @area_width) / 2, y: 0, w: (1280 - @area_width) / 2, h: 720, r: 50, g: 0, b: 0, a: 255}.solid,
         ],
     ]
   end
@@ -186,6 +187,11 @@ class GenericScene
     @spawn_table[@scene_tick].each do |st_row|
       @cm.add_to_group(:enemies, st_row[0].new(*st_row[1]))
     end
+  end
+
+  def inspect
+    #FIXME: This is just to placate DRGTK.
+    self.class.name
   end
 end
 
@@ -226,6 +232,35 @@ class SwarmWave < GenericScene
   end
 end
 
+class BossLemni < GenericScene
+  # @param [ShmupLib::CollisionManager] cm
+  # @param [Player] player
+  # @param [GenericScene, nil] last_scene
+  # @return [nil]
+  def initialize(cm, player, last_scene)
+    super(cm, player, last_scene)
+  end
+
+  # @return [Hash]
+  def build_spawn_table
+    table = {}
+    speed_div = 400
+    spawn_rate = 16
+    # Good values for speed_div and spawn_rate satisfy the following equation: (2*speed_div/spawn_rate) % 2 == 1
+    count = 2 * speed_div / spawn_rate
+    fire_delay = 60 * 12
+    i = 1
+    while i <= count
+      table[spawn_rate * i] = [[EnemyLemni, [Math::PI / speed_div, 512, 448, 200, 640, 480, Math::PI * 2 * rand, fire_delay, spawn_rate * (count - i + 5)]]]
+      table[spawn_rate * i + spawn_rate / 4] = [[EnemyLemni, [Math::PI / speed_div, -512, -448, 200, 640, 480, Math::PI * 2 * rand, fire_delay, spawn_rate * (count - i + 5)]]]
+      table[spawn_rate * i + spawn_rate / 2] = [[EnemyLemni, [Math::PI / speed_div, -512, -448, -200, 640, 480, Math::PI * 2 * rand, fire_delay, spawn_rate * (count - i + 5) + fire_delay / 2]]]
+      table[spawn_rate * i + 3 * spawn_rate / 4] = [[EnemyLemni, [Math::PI / speed_div, 512, 448, -200, 640, 480, Math::PI * 2 * rand, fire_delay, spawn_rate * (count - i + 5) + 3 * fire_delay / 2]]]
+      i += 1
+    end
+    table
+  end
+end
+
 class DelayScene < GenericScene
   # @param [ShmupLib::CollisionManager] cm
   # @param [Player] player
@@ -239,6 +274,20 @@ class DelayScene < GenericScene
     @cm = cm # The collision manager
     @player = player # The player
     @first_spawn_tick = delay
+  end
+end
+
+class InitScene < GenericScene
+  # @param [ShmupLib::CollisionManager] cm
+  # @param [Player] player
+  # @return [nil]
+  def initialize(cm, player)
+    @scene_tick = -1 # Negative one, since we want the first tick to be tick zero.
+    @spawn_table = {}
+    @area_width = 540
+    @cm = cm # The collision manager
+    @player = player # The player
+    @first_spawn_tick = -2
   end
 end
 
@@ -309,8 +358,6 @@ class BossCurtainClose < GenericScene
     @player = player # The player
     @curtain_speed = 3
     @first_spawn_tick = (960 - 540) / @curtain_speed
-    @player_init_x = nil
-    @player_init_y = nil
   end
 
   # @return [Hash]
@@ -319,10 +366,6 @@ class BossCurtainClose < GenericScene
     if @cm.get_group(:enemy_bullets).length == 0
       @area_width -= @curtain_speed
       @area_width = 540 if @area_width < 540
-      @player_init_x ||= @player.x
-      @player_init_y ||= @player.y
-      @player.shift((640 - @player_init_x)/@first_spawn_tick, (64 - @player_init_y)/@first_spawn_tick)
-      @player.allow_player_control = completed?
     end
     super(args)
   end
@@ -330,5 +373,54 @@ class BossCurtainClose < GenericScene
   # @return [Boolean]
   def completed?
     @area_width == 540
+  end
+end
+
+class Boss1Scene < GenericScene
+  def initialize(cm, player, last_scene)
+    @boss = Boss1.new(640, 900, true)
+    @player_health = 30
+    super(cm,player,last_scene)
+  end
+  def do_tick(args)
+    if @boss.y > 600
+      @boss.y -= 0.5
+      @cm.get_group(:enemies).each { |e| e.update_pos(0, -0.5) }
+      @boss.update_pos
+    end
+    if @cm.get_group(:enemies).empty? && @boss.age > 10
+      @boss.y += 5
+      @boss.update_pos
+    end
+    @boss.age += 1
+    last_player_x = @player.x
+    last_player_y = @player.y
+    out = super(args)
+    if GeoGeo::intersect?(@player.collider, @boss.collider)
+      @player.shift(last_player_x - @player.x, last_player_y - @player.y)
+    end
+    @cm.get_group(:enemies).each do |enemy|
+      next unless enemy.instance_of?(BossLaserTurret)
+      @player_health -= 1 if GeoGeo::intersect?(@player.hurt_box, enemy.beam_collider)
+      out[:game_over] = true if @player_health < 0
+    end
+    out
+  end
+  def build_spawn_table
+    table = {}
+    table[0] = [
+        [BossLaserTurret, [@boss.x + 142, @boss.y - 71]],
+        [BossLaserTurret, [@boss.x - 142, @boss.y - 71]],
+        [BossLaserTurret, [@boss.x + 277, @boss.y - 50]],
+        [BossLaserTurret, [@boss.x - 277, @boss.y - 50]]
+    ]
+    table
+  end
+  def renderables
+    [@boss, super]
+  end
+  # @return [Boolean] True if the game can move on to the next scene.
+  def completed?
+    false || @boss.y > 900;
   end
 end

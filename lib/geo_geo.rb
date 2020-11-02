@@ -38,6 +38,11 @@ module GeoGeo
     def point_inside?(x, y)
       raise "The method point_inside?(x,y) must be defined by the class that inherits Shape2D."
     end
+
+    def inspect
+      #FIXME: This is just to placate DRGTK.
+      self.class.name
+    end
   end
 
   class Box < Shape2D
