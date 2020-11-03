@@ -176,8 +176,8 @@ class GenericScene
         @cm.get_group(:player_bullets),
         @cm.get_group(:enemy_bullets),
         [
-            {x: 0, y: 0, w: (1280 - @area_width) / 2, h: 720, r: 50, g: 0, b: 0, a: 255}.solid,
-            {x: (1280 + @area_width) / 2, y: 0, w: (1280 - @area_width) / 2, h: 720, r: 50, g: 0, b: 0, a: 255}.solid,
+            {x: -1, y: 0, w: ((1280 - @area_width) / 2) + 1, h: 721, r: 50, g: 0, b: 0, a: 255}.solid,
+            {x: (1280 + @area_width) / 2, y: 0, w: (1280 - @area_width) / 2, h: 721, r: 50, g: 0, b: 0, a: 255}.solid,
         ],
     ]
   end

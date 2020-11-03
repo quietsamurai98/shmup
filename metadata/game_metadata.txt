@@ -1,6 +1,6 @@
 devid=canicvs
 devtitle=CANICVS
-gameid=shump
-gametitle=SHMUP
-version=0.1
+gameid=untitled-shmup-game
+gametitle=Untitled Shmup Game
+version=0.1.1
 icon=metadata/icon.png

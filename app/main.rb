@@ -1,3 +1,4 @@
+require 'patches/core.rb'
 require 'patches/console.rb'
 require 'patches/console_prompt.rb'
 require 'patches/framerate_diagnostics.rb'
@@ -16,6 +17,10 @@ SceneDeck = [
     [Boss1Scene, []],
     [BossCurtainClose, []],
 ]
+
+$text_r = 255
+$text_g = 0
+$text_b = 0
 
 # @param [GTK::Args] args
 # @return [
@@ -52,14 +57,14 @@ def tick(args)
   $all_brute_pairs += args.state.cm.get_group(:enemies).length * args.state.cm.get_group(:player_bullets).length + args.state.cm.get_group(:enemy_bullets).length
   $all_actual_tests += GeoGeo.tests_this_tick
 
-  args.outputs.labels << [{x: 10, y: 10.from_top, text: "Score : #{args.state.player.score}", r: 255, g: 0, b: 0},
-                          {x: 10, y: 40.from_top, text: "Combo : #{args.state.player.scoring_data[:combo] * (args.state.player.scoring_data[:full_combo] ? 10 : 1)}x", r: 255, g: 0, b: 0},
-                          {x: 1205, y: 40, text: "Move:  WASD", r: 255, g: 0, b: 0, size_enum: -4},
-                          {x: 1205, y: 20, text: "Fire: Space", r: 255, g: 0, b: 0, size_enum: -4}]
+  args.outputs.labels << [{x: 5, y: 10.from_top, text: "Score : #{args.state.player.score}", r: $text_r, g: $text_g, b: $text_b},
+                          {x: 5, y: 40.from_top, text: "Combo : #{args.state.player.scoring_data[:combo] * (args.state.player.scoring_data[:full_combo] ? 10 : 1)}x", r: $text_r, g: $text_g, b: $text_b},
+                          {x: 1120, y: 40, text: "Move: WASD / Arrows", r: $text_r, g: $text_g, b: $text_b, size_enum: -2},
+                          {x: 1120, y: 20, text: "Fire: Space / Click", r: $text_r, g: $text_g, b: $text_b, size_enum: -2},
+                          {x: 5, y: 20, text: "FPS: #{$gtk.current_framerate.to_s.to_i}",r: $text_r, g: $text_g, b: $text_b, size_enum: -2}]
 
   # Debug labels
   texts = [
-      "FPS: #{$gtk.current_framerate.to_s.to_i}",
       "Enemies: #{args.state.cm.get_group(:enemies).length}",
       "Avg Pairs/Tests: #{$all_actual_tests == 0 ? '∞' : ($all_brute_pairs / $all_actual_tests).round}",
       "Pairs/Tests    : #{GeoGeo.tests_this_tick == 0 ? '∞' : (brute_pairs / GeoGeo.tests_this_tick).round}",
@@ -68,7 +73,7 @@ def tick(args)
       "Scene: #{args.state.scene.class.name}",
   ]
   args.outputs.debug << texts.each_with_index.map do |text, idx|
-    {x: 10, y: 20 * (idx + 1), text: text, r: 255, g: 0, b: 0, size_enum: -4}
+    {x: 5, y: 20 * (idx + 2), text: text, r: $text_r, g: $text_g, b: $text_b, size_enum: -2}
   end
 end
 
@@ -165,13 +170,12 @@ class Player
   # @return [nil]
   def do_tick(args, cm)
     # @type [Array] keys_dh
-    keys_dh = args.inputs.keyboard.key[:down_or_held]
+    kb = args.inputs.keyboard
+    keys_dh = kb.key[:down_or_held]
     dx, dy = 0, 0
     if @allow_player_control
-      dx += 1 if keys_dh.include?(:d)
-      dx -= 1 if keys_dh.include?(:a)
-      dy += 1 if keys_dh.include?(:w)
-      dy -= 1 if keys_dh.include?(:s)
+      dx += args.inputs.left_right
+      dy += args.inputs.up_down
     end
     if dx != 0 || dy != 0
       speed_factor = @max_speed / Math.sqrt(dx * dx + dy * dy)
@@ -185,9 +189,9 @@ class Player
     dx = 644 - half_sw - @collider.left if @collider.left <= 644 - half_sw - dx && dx <= 0
 
     shift(dx, dy) if dx != 0 || dy != 0
-    if args.inputs.mouse.button_left || keys_dh.include?(:space)
+    if args.inputs.mouse.button_left || keys_dh.include?(:space) || args.inputs.controller_one&.fire
       fire(cm, :ripple, dx * 0.1, 0)
-    elsif args.inputs.mouse.button_right
+    elsif args.inputs.mouse.button_right #DEPRECATED
       fire(cm, :salvo, dx * 0.1, 0)
     end
     @cur_fire_cooldown -= 1 if @cur_fire_cooldown > 0
